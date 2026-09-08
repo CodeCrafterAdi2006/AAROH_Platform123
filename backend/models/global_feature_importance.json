@@ -1,0 +1,250 @@
+{
+  "cohort_size": 569,
+  "total_features": 30,
+  "method": "Mean Absolute TreeSHAP Attribution (cohort-wide)",
+  "base_value": -0.5211,
+  "top_10_biomarkers": [
+    {
+      "rank": 1,
+      "feature_name": "worst concave points",
+      "mean_abs_shap": 0.9005,
+      "feature_index": 27
+    },
+    {
+      "rank": 2,
+      "feature_name": "worst perimeter",
+      "mean_abs_shap": 0.7999,
+      "feature_index": 22
+    },
+    {
+      "rank": 3,
+      "feature_name": "mean concave points",
+      "mean_abs_shap": 0.7398,
+      "feature_index": 7
+    },
+    {
+      "rank": 4,
+      "feature_name": "worst area",
+      "mean_abs_shap": 0.7383,
+      "feature_index": 23
+    },
+    {
+      "rank": 5,
+      "feature_name": "area error",
+      "mean_abs_shap": 0.5757,
+      "feature_index": 13
+    },
+    {
+      "rank": 6,
+      "feature_name": "worst concavity",
+      "mean_abs_shap": 0.5661,
+      "feature_index": 26
+    },
+    {
+      "rank": 7,
+      "feature_name": "worst texture",
+      "mean_abs_shap": 0.5489,
+      "feature_index": 21
+    },
+    {
+      "rank": 8,
+      "feature_name": "mean texture",
+      "mean_abs_shap": 0.4039,
+      "feature_index": 1
+    },
+    {
+      "rank": 9,
+      "feature_name": "worst smoothness",
+      "mean_abs_shap": 0.3173,
+      "feature_index": 24
+    },
+    {
+      "rank": 10,
+      "feature_name": "worst radius",
+      "mean_abs_shap": 0.2756,
+      "feature_index": 20
+    }
+  ],
+  "all_rankings": [
+    {
+      "rank": 1,
+      "feature_name": "worst concave points",
+      "mean_abs_shap": 0.9005,
+      "feature_index": 27
+    },
+    {
+      "rank": 2,
+      "feature_name": "worst perimeter",
+      "mean_abs_shap": 0.7999,
+      "feature_index": 22
+    },
+    {
+      "rank": 3,
+      "feature_name": "mean concave points",
+      "mean_abs_shap": 0.7398,
+      "feature_index": 7
+    },
+    {
+      "rank": 4,
+      "feature_name": "worst area",
+      "mean_abs_shap": 0.7383,
+      "feature_index": 23
+    },
+    {
+      "rank": 5,
+      "feature_name": "area error",
+      "mean_abs_shap": 0.5757,
+      "feature_index": 13
+    },
+    {
+      "rank": 6,
+      "feature_name": "worst concavity",
+      "mean_abs_shap": 0.5661,
+      "feature_index": 26
+    },
+    {
+      "rank": 7,
+      "feature_name": "worst texture",
+      "mean_abs_shap": 0.5489,
+      "feature_index": 21
+    },
+    {
+      "rank": 8,
+      "feature_name": "mean texture",
+      "mean_abs_shap": 0.4039,
+      "feature_index": 1
+    },
+    {
+      "rank": 9,
+      "feature_name": "worst smoothness",
+      "mean_abs_shap": 0.3173,
+      "feature_index": 24
+    },
+    {
+      "rank": 10,
+      "feature_name": "worst radius",
+      "mean_abs_shap": 0.2756,
+      "feature_index": 20
+    },
+    {
+      "rank": 11,
+      "feature_name": "compactness error",
+      "mean_abs_shap": 0.1557,
+      "feature_index": 15
+    },
+    {
+      "rank": 12,
+      "feature_name": "mean smoothness",
+      "mean_abs_shap": 0.1111,
+      "feature_index": 4
+    },
+    {
+      "rank": 13,
+      "feature_name": "radius error",
+      "mean_abs_shap": 0.1092,
+      "feature_index": 10
+    },
+    {
+      "rank": 14,
+      "feature_name": "mean area",
+      "mean_abs_shap": 0.0955,
+      "feature_index": 3
+    },
+    {
+      "rank": 15,
+      "feature_name": "mean compactness",
+      "mean_abs_shap": 0.0865,
+      "feature_index": 5
+    },
+    {
+      "rank": 16,
+      "feature_name": "worst symmetry",
+      "mean_abs_shap": 0.0853,
+      "feature_index": 28
+    },
+    {
+      "rank": 17,
+      "feature_name": "symmetry error",
+      "mean_abs_shap": 0.0608,
+      "feature_index": 18
+    },
+    {
+      "rank": 18,
+      "feature_name": "mean concavity",
+      "mean_abs_shap": 0.0549,
+      "feature_index": 6
+    },
+    {
+      "rank": 19,
+      "feature_name": "fractal dimension error",
+      "mean_abs_shap": 0.0537,
+      "feature_index": 19
+    },
+    {
+      "rank": 20,
+      "feature_name": "mean fractal dimension",
+      "mean_abs_shap": 0.0459,
+      "feature_index": 9
+    },
+    {
+      "rank": 21,
+      "feature_name": "concavity error",
+      "mean_abs_shap": 0.0429,
+      "feature_index": 16
+    },
+    {
+      "rank": 22,
+      "feature_name": "smoothness error",
+      "mean_abs_shap": 0.0424,
+      "feature_index": 14
+    },
+    {
+      "rank": 23,
+      "feature_name": "perimeter error",
+      "mean_abs_shap": 0.0386,
+      "feature_index": 12
+    },
+    {
+      "rank": 24,
+      "feature_name": "mean radius",
+      "mean_abs_shap": 0.035,
+      "feature_index": 0
+    },
+    {
+      "rank": 25,
+      "feature_name": "mean symmetry",
+      "mean_abs_shap": 0.0331,
+      "feature_index": 8
+    },
+    {
+      "rank": 26,
+      "feature_name": "texture error",
+      "mean_abs_shap": 0.0215,
+      "feature_index": 11
+    },
+    {
+      "rank": 27,
+      "feature_name": "worst compactness",
+      "mean_abs_shap": 0.0181,
+      "feature_index": 25
+    },
+    {
+      "rank": 28,
+      "feature_name": "worst fractal dimension",
+      "mean_abs_shap": 0.0113,
+      "feature_index": 29
+    },
+    {
+      "rank": 29,
+      "feature_name": "concave points error",
+      "mean_abs_shap": 0.0063,
+      "feature_index": 17
+    },
+    {
+      "rank": 30,
+      "feature_name": "mean perimeter",
+      "mean_abs_shap": 0.0,
+      "feature_index": 2
+    }
+  ]
+}
