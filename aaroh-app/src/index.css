@@ -4,91 +4,77 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   body {
-    background-color: #080c14;
-    color: #f1f5f9;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background-color: #F8FAFC;
+    color: #0F172A;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     min-height: 100vh;
     overflow-x: hidden;
   }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', 'Inter', sans-serif;
+  }
 }
 
-/* Glassmorphism & Micro-animations */
-.glass-panel {
-  background: rgba(13, 19, 31, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* Card & Surface Tokens */
+.card-clean {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
 }
 
-.glass-panel-elevated {
-  background: rgba(17, 24, 39, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+.card-elevated {
+  background-color: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 1rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
 }
 
-.glow-cyan {
-  box-shadow: 0 0 20px rgba(6, 182, 212, 0.25);
+.engine-dark {
+  background-color: #0F172A;
+  border: 1px solid rgba(13, 148, 136, 0.3);
+  border-radius: 1rem;
+  color: #F8FAFC;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.6);
 }
 
-.glow-rose {
-  box-shadow: 0 0 20px rgba(244, 63, 94, 0.25);
+.glow-teal {
+  box-shadow: 0 0 20px rgba(13, 148, 136, 0.25);
 }
 
-.glow-emerald {
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.25);
-}
-
-/* Custom Sleek Scrollbar */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #080c14;
+  background: #F1F5F9;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f293d;
+  background: #CBD5E1;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: #94A3B8;
 }
 
-/* Keyframe Animations */
-@keyframes pulse-subtle {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+/* Animated Waveform Bars */
+@keyframes audio-wave {
+  0% { height: 15%; }
+  50% { height: 95%; }
+  100% { height: 35%; }
 }
 
-.animate-pulse-subtle {
-  animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+.wave-bar {
+  animation: audio-wave 1.2s ease-in-out infinite alternate;
 }
 
-@keyframes scanline {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(1000%); }
-}
-
-.scanline-effect {
-  position: relative;
-  overflow: hidden;
-}
-.scanline-effect::after {
-  content: " ";
-  position: absolute;
-  top: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.6), transparent);
-  animation: scanline 4s linear infinite;
-  pointer-events: none;
-}
-
-/* Print Stylesheet for Formal Hospital Clinical Report */
+/* Print Stylesheet for Formal Consultation Memo */
 @media print {
   body {
     background: #ffffff !important;
@@ -100,11 +86,9 @@
   .print-only {
     display: block !important;
   }
-  .print-container {
-    background: #ffffff !important;
-    color: #111827 !important;
-    border: none !important;
+  .print-memo {
     box-shadow: none !important;
+    border: none !important;
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;

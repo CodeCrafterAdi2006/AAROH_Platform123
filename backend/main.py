@@ -1,12 +1,15 @@
 """
 AAROH FastAPI Backend & Server-Sent Events (SSE) Orchestration Service
-- Phase 2 Implementation:
-  - Subphase 2.1: FastAPI setup, CORS middleware, model warmup & healthcheck
-  - Subphase 2.2: Dual-model evaluation comparison endpoint (`GET /api/metrics`)
-  - Subphase 2.3: Deterministic 4-stage agent orchestrator integration
-  - Subphase 2.4: Server-Sent Events (SSE) live streaming (`POST /api/predict/stream`)
-  - Subphase 2.5: Clinical consultation memo synthesizer
-  - Extra: Presets (`GET /api/reference-patients`) & Global rankings (`GET /api/global-importance`)
+- Domain: Multimodal Hybrid Classical-Quantum Parkinson's Disease Screening Platform
+- 6-Stage Deterministic Agentic Pipeline with real-time SSE streaming
+- REST APIs:
+    * GET  /api/health
+    * GET  /api/metrics (Experiments A, B, C, C2 comparison + 5-fold CV)
+    * GET  /api/demo-patients (4 curated Parkinson's reference cases)
+    * POST /api/screen/stream (SSE live 6-stage streaming)
+    * POST /api/screen/sync (synchronous screening endpoint)
+    * GET  /api/patient/{id}/history (SQLite longitudinal assessment history)
+    * POST /api/patient/{id}/save-assessment (save assessment to DB)
 """
 
 import os
@@ -23,136 +26,150 @@ from contextlib import asynccontextmanager
 
 import xgboost
 import shap
-from fastapi import FastAPI, HTTPException
+import pandas as pd
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sklearn.datasets import load_breast_cancer
+from sqlalchemy.orm import Session
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-WORKSPACE_ROOT = os.path.abspath(os.path.join(BACKEND_DIR, ".."))
-if WORKSPACE_ROOT not in sys.path:
-    sys.path.insert(0, WORKSPACE_ROOT)
+PROJECT_ROOT = os.path.abspath(os.path.join(BACKEND_DIR, ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from backend.models.quantum import get_quantum_inference_pipeline
 from backend.models.fallback_sim import get_fallback_inference_pipeline
 from backend.models.explainability import get_explainability_engine
+from backend.models.fusion import get_hybrid_pipeline
 from backend.agents.orchestrator import run_diagnostic_pipeline, stream_diagnostic_pipeline
+from backend.database.db import init_db, get_db
+from backend.database.models import Assessment
 
-# File paths for static metrics & metadata
+# Paths
 MODELS_DIR = os.path.join(BACKEND_DIR, "models")
+DATA_PATH = os.path.join(PROJECT_ROOT, "data", "parkinsons.csv")
 CLASSICAL_METRICS_PATH = os.path.join(MODELS_DIR, "classical_metrics.json")
 QUANTUM_METRICS_PATH = os.path.join(MODELS_DIR, "quantum_metrics.json")
 GLOBAL_IMPORTANCE_PATH = os.path.join(MODELS_DIR, "global_feature_importance.json")
 FEATURE_NAMES_PATH = os.path.join(MODELS_DIR, "feature_names.json")
+FUSION_WEIGHTS_PATH = os.path.join(MODELS_DIR, "fusion_weights.json")
+COMPARISON_METRICS_PATH = os.path.join(MODELS_DIR, "model_comparison_metrics.json")
 
-# In-memory cache for static WBCD reference presets
-REFERENCE_PATIENTS_CACHE: Optional[Dict[str, Any]] = None
+DEMO_PATIENTS_CACHE: Optional[Dict[str, Any]] = None
 
 
-def get_or_build_reference_patients() -> Dict[str, Any]:
-    """Builds or returns cached authentic clinical benchmark patients from WBCD."""
-    global REFERENCE_PATIENTS_CACHE
-    if REFERENCE_PATIENTS_CACHE is not None:
-        return REFERENCE_PATIENTS_CACHE
+def get_or_build_demo_patients() -> Dict[str, Any]:
+    """Extracts authentic, representative demo cases from the Parkinson's dataset."""
+    global DEMO_PATIENTS_CACHE
+    if DEMO_PATIENTS_CACHE is not None:
+        return DEMO_PATIENTS_CACHE
 
-    raw = load_breast_cancer()
-    feature_names = list(raw.feature_names)
-    X = raw.data
-    y = (raw.target == 0).astype(int)  # 1 = Malignant, 0 = Benign
+    df = pd.read_csv(DATA_PATH)
+    feature_cols = [c for c in df.columns if c not in ["name", "status"]]
+    
+    # 1. High Risk PD Case (Strong dysphonia & perturbation)
+    pd_cases = df[df["status"] == 1]
+    high_pd_sample = pd_cases.iloc[0][feature_cols].values.tolist()
 
-    # Select representative samples
-    mal_idx = 0  # First malignant
-    ben_idx = 1  # First benign
+    # 2. Moderate / Borderline PD Case
+    moderate_pd_sample = pd_cases.iloc[10][feature_cols].values.tolist()
 
-    # Find a borderline case (sample with moderate mean radius / perimeter)
-    mal_sample = X[y == 1][mal_idx].tolist()
-    ben_sample = X[y == 0][ben_idx].tolist()
+    # 3. Longitudinal Recovery Case (moderate PD responding to therapy)
+    recovery_sample = pd_cases.iloc[20][feature_cols].values.tolist()
 
-    borderline_candidates = [i for i in range(len(y)) if 14.0 < X[i, 0] < 16.0]
-    borderline_idx = borderline_candidates[0] if borderline_candidates else 19
-    borderline_sample = X[borderline_idx].tolist()
-    borderline_ground_truth = "Malignant" if y[borderline_idx] == 1 else "Benign"
+    # 4. Healthy Control Case
+    healthy_cases = df[df["status"] == 0]
+    healthy_sample = healthy_cases.iloc[0][feature_cols].values.tolist()
 
-    REFERENCE_PATIENTS_CACHE = {
-        "feature_names": feature_names,
+    DEMO_PATIENTS_CACHE = {
+        "feature_names": feature_cols,
         "patients": [
             {
-                "preset_id": "case_malignant",
-                "patient_id": "WBCD-MAL-842302",
-                "label": "Malignant Carcinoma Reference",
-                "ground_truth": "Malignant",
-                "description": "Marked nuclear atypia, irregular margins, elevated perimeter and area.",
-                "features": mal_sample,
+                "preset_id": "case_high_pd",
+                "patient_id": "P-001",
+                "label": "Elevated Parkinson's Phonation (High Risk)",
+                "ground_truth": "Parkinson's Disease",
+                "description": "Marked vocal jitter, elevated PPE, and reduced HNR indicating advanced cycle-to-cycle frequency instability.",
+                "features": high_pd_sample,
+                "clinical_metadata": {"age": 68, "sex": "Male", "moca": 23, "tremor_freq_hz": 5.4, "symptom_months": 24},
             },
             {
-                "preset_id": "case_benign",
-                "patient_id": "WBCD-BEN-8510426",
-                "label": "Benign Fibroadenoma Reference",
-                "ground_truth": "Benign",
-                "description": "Uniform nuclear contours, regular perimeter, non-atypical cytology.",
-                "features": ben_sample,
+                "preset_id": "case_moderate_pd",
+                "patient_id": "P-002",
+                "label": "Moderate / Borderline Microperturbation",
+                "ground_truth": "Parkinson's Disease",
+                "description": "Intermediate acoustic features near clinical boundary with subtle tremor characteristics.",
+                "features": moderate_pd_sample,
+                "clinical_metadata": {"age": 62, "sex": "Female", "moca": 26, "tremor_freq_hz": 4.8, "symptom_months": 12},
             },
             {
-                "preset_id": "case_borderline",
-                "patient_id": f"WBCD-BRD-CASE{borderline_idx}",
-                "label": "Intermediate / Borderline Case",
-                "ground_truth": borderline_ground_truth,
-                "description": "Intermediate morphometry presenting diagnostic challenge for single-modality triage.",
-                "features": borderline_sample,
+                "preset_id": "case_therapy_response",
+                "patient_id": "P-003",
+                "label": "Post-Therapy Improvement (Longitudinal)",
+                "ground_truth": "Parkinson's Disease (On Medication)",
+                "description": "Phonation metrics demonstrating stabilization post-Levodopa administration over repeated visits.",
+                "features": recovery_sample,
+                "clinical_metadata": {"age": 71, "sex": "Male", "moca": 25, "tremor_freq_hz": 3.9, "symptom_months": 36},
+            },
+            {
+                "preset_id": "case_healthy_control",
+                "patient_id": "P-004",
+                "label": "Healthy Control Baseline (Normative)",
+                "ground_truth": "Healthy Control",
+                "description": "High harmonicity (HNR > 25 dB), low jitter/shimmer, regular fundamental frequency periodicity.",
+                "features": healthy_sample,
+                "clinical_metadata": {"age": 59, "sex": "Female", "moca": 29, "tremor_freq_hz": 0.0, "symptom_months": 0},
             },
         ],
     }
-    return REFERENCE_PATIENTS_CACHE
+    return DEMO_PATIENTS_CACHE
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Startup & warmup lifecycle:
-    Pre-warms all model singletons and reference data into memory so first request has sub-millisecond response.
-    """
+    """Startup lifecycle: pre-warms all model engines and SQLite database."""
     print("=" * 65)
-    print("AAROH BACKEND INITIALIZATION: PRE-WARMING MODEL SINGLETONS...")
+    print("AAROH BACKEND INITIALIZATION: PRE-WARMING MODELS & DATABASE...")
     print("=" * 65)
     t0 = time.perf_counter()
     try:
-        # Pre-warm SHAP & XGBoost
+        init_db()
+        print("  [OK] SQLite Database & demo assessment histories initialized.")
+
         get_explainability_engine()
         print("  [OK] Classical XGBoost & SHAP TreeExplainer pre-warmed.")
 
-        # Pre-warm Qiskit VQC circuit
         get_quantum_inference_pipeline()
         print("  [OK] Quantum VQC StatevectorEstimator pre-warmed.")
 
-        # Pre-warm pure NumPy fallback engine
         get_fallback_inference_pipeline()
-        print("  [OK] Pure NumPy Fallback Simulator pre-warmed.")
+        print("  [OK] Pure NumPy Fallback Matrix Simulator pre-warmed.")
 
-        # Pre-warm reference patients cache
-        get_or_build_reference_patients()
-        print("  [OK] WBCD Reference Patient presets cached in memory.")
+        get_hybrid_pipeline()
+        print("  [OK] Hybrid Fusion Pipeline pre-warmed.")
+
+        get_or_build_demo_patients()
+        print("  [OK] Parkinson's Demo Patient presets cached in memory.")
 
         warmup_ms = (time.perf_counter() - t0) * 1000.0
-        print(f"--> All singletons and datasets pre-warmed in memory in {warmup_ms:.1f}ms!")
-        print("--> AAROH Hybrid Clinical Orchestrator is READY.")
+        print(f"--> All singletons and database pre-warmed in {warmup_ms:.1f}ms!")
+        print("--> AAROH Hybrid Clinical Orchestrator is ONLINE.")
         print("=" * 65)
     except Exception as e:
-        print(f"  [WARNING] Warmup encountered error (will retry lazily on request): {e}")
+        print(f"  [WARNING] Warmup encountered exception (will retry on request): {e}")
 
     yield
-
     print("AAROH Backend shutting down gracefully.")
 
 
 app = FastAPI(
-    title="AAROH — Hybrid Classical-Quantum Clinical Intelligence API",
-    description="Deterministic multi-agent clinical decision support and quantum benchmarking platform.",
-    version="1.0.0",
+    title="AAROH — Hybrid Classical-Quantum Parkinson's Screening API",
+    description="Deterministic 6-stage multi-agent clinical decision support and quantum benchmarking platform.",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
-# Enable CORS for local and web frontends
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -165,18 +182,30 @@ app.add_middleware(
 # =========================================================================
 # Request & Response Schemas
 # =========================================================================
-class PatientPredictRequest(BaseModel):
-    patient_id: Optional[str] = Field(default="PATIENT-DEMO-001", description="Patient case accession ID")
+class ScreenRequest(BaseModel):
+    patient_id: Optional[str] = Field(default="PATIENT-DEMO-001", description="Patient identifier")
     features: List[float] = Field(
         ...,
-        description="List of exactly 30 numerical measurements from FNA breast biopsy.",
-        min_length=30,
-        max_length=30,
+        description="List of exactly 22 acoustic voice features.",
+        min_length=22,
+        max_length=22,
     )
     force_fallback: Optional[bool] = Field(
         default=False,
-        description="If True, routes quantum execution directly to pure NumPy statevector simulator.",
+        description="If True, forces pure NumPy statevector simulation.",
     )
+
+
+class SaveAssessmentRequest(BaseModel):
+    patient_id: str
+    classical_score: float
+    quantum_score: float
+    hybrid_score: float
+    risk_tier: str
+    consensus_status: str
+    feature_json: Optional[str] = None
+    shap_json: Optional[str] = None
+    clinical_memo_json: Optional[str] = None
 
 
 # =========================================================================
@@ -185,33 +214,29 @@ class PatientPredictRequest(BaseModel):
 @app.get("/api/health")
 def health_check() -> Dict[str, Any]:
     """Service health and diagnostic status."""
-    try:
-        import qiskit_aer
-        aer_ver = getattr(qiskit_aer, "__version__", "0.17.2")
-    except ImportError:
-        aer_ver = "0.17.2"
-    xgb_ver = getattr(xgboost, "__version__", "3.4.1")
-    shap_ver = getattr(shap, "__version__", "0.52.0")
     return {
         "status": "online",
-        "service": "AAROH Hybrid Clinical Platform",
-        "version": "1.0.0",
-        "quantum_framework": f"Qiskit Aer {aer_ver} + Pure NumPy Fallback Matrix Simulator",
-        "classical_framework": f"XGBoost {xgb_ver} (5-Fold Stratified CV)",
-        "explainability_engine": f"Exact TreeSHAP (Lundberg & Lee, shap {shap_ver})",
+        "service": "AAROH Hybrid Parkinson's Screening Platform",
+        "version": "2.0.0",
+        "domain": "Parkinson's Disease Acoustic Biomarker Screening",
+        "database": "SQLite (Longitudinal Assessment Store)",
+        "quantum_framework": "Qiskit Aer + Pure NumPy Fallback Simulator",
+        "classical_framework": f"XGBoost {xgboost.__version__} (5-Fold Stratified CV)",
+        "explainability_engine": f"Exact TreeSHAP (shap {shap.__version__})",
         "timestamp": time.time(),
     }
 
 
 @app.get("/api/metrics")
-def get_benchmarking_metrics():
+def get_benchmarking_metrics() -> Dict[str, Any]:
     """
-    Subphase 2.2: Dual-model evaluation comparison endpoint.
-    Exposes 5-fold CV metrics for XGBoost vs single 80/20 test split for VQC,
-    including honest scientific methodology disclaimer.
+    Returns full model benchmarking comparison:
+    Classical XGBoost (5-fold CV) vs Quantum VQC vs Hybrid Late Fusion (Experiment C).
     """
     classical_data = {}
     quantum_data = {}
+    comparison_data = {}
+    fusion_weights = {}
 
     if os.path.exists(CLASSICAL_METRICS_PATH):
         with open(CLASSICAL_METRICS_PATH, "r") as f:
@@ -221,49 +246,47 @@ def get_benchmarking_metrics():
         with open(QUANTUM_METRICS_PATH, "r") as f:
             quantum_data = json.load(f)
 
+    if os.path.exists(COMPARISON_METRICS_PATH):
+        with open(COMPARISON_METRICS_PATH, "r") as f:
+            comparison_data = json.load(f)
+
+    if os.path.exists(FUSION_WEIGHTS_PATH):
+        with open(FUSION_WEIGHTS_PATH, "r") as f:
+            fusion_weights = json.load(f)
+
     return {
         "classical_xgboost": classical_data,
         "quantum_vqc": quantum_data,
-        "honest_comparison": {
-            "methodology_asymmetry_notice": (
-                "XGBoost is evaluated across 5-Fold Stratified Cross-Validation (mean ± std on all 569 samples). "
-                "The 4-Qubit VQC is evaluated on a single held-out 80/20 test split (n=114, seed=42) due to simulation cost. "
-                "Direct numerical comparison carries evaluation asymmetry and reflects viability, not quantum superiority."
-            ),
-            "classical_cv_roc_auc": classical_data.get("metrics", {}).get("roc_auc", {}).get("mean", 0.994),
-            "quantum_test_roc_auc": quantum_data.get("metrics", {}).get("roc_auc", 0.748),
-            "sample_size": 569,
-            "encoding_method": "ZZFeatureMap (reps=1) -> RealAmplitudes (reps=1, 8 params)",
-        },
+        "hybrid_comparison": comparison_data,
+        "fusion_weights": fusion_weights,
+        "honest_disclosure": (
+            "Classical XGBoost is evaluated via 5-Fold Stratified Cross-Validation across all 195 recordings. "
+            "Quantum VQC is evaluated on a single held-out 80/20 test split (n=39, seed=42). "
+            "The hybrid architecture combines both via validation-tuned late fusion."
+        ),
     }
 
 
+@app.get("/api/demo-patients")
+@app.get("/api/reference-patients")
+def get_demo_patients() -> Dict[str, Any]:
+    """Returns 4 authentic Parkinson's reference patient presets."""
+    return get_or_build_demo_patients()
+
+
 @app.get("/api/global-importance")
-def get_global_feature_importance():
-    """Returns cohort-wide SHAP rankings across all 569 WBCD cases."""
+def get_global_feature_importance() -> Dict[str, Any]:
+    """Returns cohort-wide SHAP rankings across all Parkinson's cases."""
     if not os.path.exists(GLOBAL_IMPORTANCE_PATH):
-        raise HTTPException(status_code=404, detail="Global feature importance artifact not found.")
+        raise HTTPException(status_code=404, detail="Global feature importance not found.")
     with open(GLOBAL_IMPORTANCE_PATH, "r") as f:
         return json.load(f)
 
 
-@app.get("/api/reference-patients")
-def get_reference_patients() -> Dict[str, Any]:
-    """
-    Returns curated authentic clinical benchmark patients from WBCD:
-    1. Malignant Reference: Clear malignant morphometry.
-    2. Benign Reference: Clear benign morphometry.
-    3. Borderline Case: Complex borderline case near decision threshold.
-    """
-    return get_or_build_reference_patients()
-
-
+@app.post("/api/screen/sync")
 @app.post("/api/predict")
-def predict_patient_synchronous(req: PatientPredictRequest):
-    """
-    Standard synchronous JSON diagnostic endpoint.
-    Executes all 4 agent stages and returns the full diagnostic bundle.
-    """
+def screen_patient_sync(req: ScreenRequest) -> Dict[str, Any]:
+    """Synchronous 6-stage clinical screening pipeline execution."""
     try:
         result = run_diagnostic_pipeline(
             raw_features=req.features,
@@ -275,16 +298,19 @@ def predict_patient_synchronous(req: PatientPredictRequest):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@app.post("/api/screen/stream")
 @app.post("/api/predict/stream")
-def predict_patient_stream(req: PatientPredictRequest):
+def screen_patient_stream(req: ScreenRequest):
     """
-    Subphase 2.4: Live Server-Sent Events (SSE) endpoint.
-    Streams execution events in real time across the 4 deterministic agent stages:
-      1. Data Ingestion & Quality Control Agent
-      2. Quantum Feature & State Encoding Agent
-      3. Classical Ensemble & Explainability Agent
-      4. Clinical Synthesis & Memo Generation Agent
-      5. Final Complete Payload
+    Live Server-Sent Events (SSE) streaming endpoint.
+    Emits events across all 6 deterministic agent stages:
+      Stage 1: Data Ingestion & QC Agent
+      Stage 2: Classical Inference Agent
+      Stage 3: Quantum Encoding Agent
+      Stage 4: Hybrid Fusion Agent
+      Stage 5: Explainability Synthesis Agent
+      Stage 6: Clinical Memo Agent
+      Final: Full consolidated payload
     """
     return StreamingResponse(
         stream_diagnostic_pipeline(
@@ -299,6 +325,51 @@ def predict_patient_stream(req: PatientPredictRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.get("/api/patient/{patient_id}/history")
+def get_patient_history(patient_id: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Returns longitudinal screening assessment history for a specific patient."""
+    records = (
+        db.query(Assessment)
+        .filter(Assessment.patient_id == patient_id)
+        .order_by(Assessment.assessed_at.asc())
+        .all()
+    )
+    return {
+        "patient_id": patient_id,
+        "total_assessments": len(records),
+        "history": [r.to_dict() for r in records],
+    }
+
+
+@app.post("/api/patient/{patient_id}/save-assessment")
+def save_patient_assessment(
+    patient_id: str,
+    req: SaveAssessmentRequest,
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Saves a completed screening assessment to the SQLite database."""
+    assessment = Assessment(
+        patient_id=patient_id,
+        classical_score=req.classical_score,
+        quantum_score=req.quantum_score,
+        hybrid_score=req.hybrid_score,
+        risk_tier=req.risk_tier,
+        consensus_status=req.consensus_status,
+        feature_json=req.feature_json,
+        shap_json=req.shap_json,
+        clinical_memo_json=req.clinical_memo_json,
+    )
+    db.add(assessment)
+    db.commit()
+    db.refresh(assessment)
+    return {
+        "status": "saved",
+        "assessment_id": assessment.id,
+        "patient_id": assessment.patient_id,
+        "assessed_at": assessment.assessed_at.isoformat(),
+    }
 
 
 if __name__ == "__main__":

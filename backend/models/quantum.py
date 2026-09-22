@@ -1,21 +1,23 @@
 """
 AAROH Quantum Machine Learning Pipeline: Variational Quantum Classifier (VQC)
-- Dataset: Wisconsin Breast Cancer Diagnostic (WBCD), n=569
-- Dimensionality: 30 features -> StandardScaler -> PCA (4 components, ~80% variance) -> MinMaxScaler([0, pi])
+- Domain: Parkinson's Disease Acoustic Screening
+- Dataset: UCI Parkinson's Voice Telemonitoring Dataset (195 recordings, 22 features)
+- Dimensionality: 22 acoustic features -> StandardScaler -> PCA (4 components, ~83.9% variance) -> MinMaxScaler([0, pi])
 - Encoding: 4-qubit Second-Order Pauli Expansion (ZZFeatureMap, reps=1)
 - Ansatz: 4-qubit Alternating Rotations & Entanglement (RealAmplitudes, reps=1, 8 parameters)
 - Observable: Pauli-Z on Qubit 0 (SparsePauliOp IIIZ)
-- Optimization: COBYLA (50-60 iterations, Binary Cross-Entropy Loss)
+- Optimization: COBYLA (50 iterations, Binary Cross-Entropy Loss)
 - Evaluation: Held-out 80/20 Stratified Split (reproducible seed=42)
 - Artifacts: vqc_params_pretrained.npy, quantum_metrics.json, pca.joblib, quantum_scaler.joblib
 """
 
 import os
+import sys
 import time
 import json
 import numpy as np
+import pandas as pd
 import joblib
-from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.decomposition import PCA
@@ -38,6 +40,11 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 
 MODELS_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(MODELS_DIR, "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+DATA_PATH = os.path.join(PROJECT_ROOT, "data", "parkinsons.csv")
 PARAMS_PATH = os.path.join(MODELS_DIR, "vqc_params_pretrained.npy")
 METRICS_PATH = os.path.join(MODELS_DIR, "quantum_metrics.json")
 PCA_PATH = os.path.join(MODELS_DIR, "pca.joblib")
@@ -62,13 +69,14 @@ def build_vqc_circuit():
 
 def load_and_preprocess_data(random_state=42):
     """
-    Loads WBCD, applies Stratified 80/20 split, fits StandardScaler + PCA(4) + MinMaxScaler([0, pi]).
-    Clinical target convention: 1 = Malignant, 0 = Benign.
+    Loads UCI Parkinson's dataset, applies Stratified 80/20 split,
+    fits StandardScaler + PCA(4 components) + MinMaxScaler([0, pi]).
+    Target convention: 1 = Parkinson's, 0 = Healthy Control.
     """
-    raw_data = load_breast_cancer()
-    X = raw_data.data
-    # 0 in sklearn is malignant, 1 is benign. Convert: 1 = Malignant, 0 = Benign
-    y = (raw_data.target == 0).astype(int)
+    df = pd.read_csv(DATA_PATH)
+    feature_cols = [c for c in df.columns if c not in ["name", "status"]]
+    X = df[feature_cols].values.astype(np.float64)
+    y = df["status"].values.astype(int)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=random_state
@@ -97,7 +105,7 @@ def load_and_preprocess_data(random_state=42):
     X_test_q = q_scaler.transform(X_test_pca)
     joblib.dump(q_scaler, Q_SCALER_PATH)
 
-    var_ratio = pca.explained_variance_ratio_.tolist()
+    var_ratio = [float(v) for v in pca.explained_variance_ratio_]
     total_var = float(np.sum(pca.explained_variance_ratio_))
 
     return {
@@ -140,7 +148,7 @@ class QuantumVQC:
 
     def predict_proba(self, X_q, weights=None):
         """
-        Maps raw expectation value <Z> in [-1.0, 1.0] to probability P(Malignant) in [0.0, 1.0].
+        Maps raw expectation value <Z> in [-1.0, 1.0] to probability P(Parkinson's) in [0.0, 1.0].
         """
         evs = self.evaluate_evs(X_q, weights=weights)
         # Quantum state mapping: evs in [-1, 1] -> (1 - ev)/2
@@ -154,11 +162,11 @@ class QuantumVQC:
 
 def train_vqc(maxiter=50, random_state=42):
     """
-    Executes VQC training on the WBCD training set using COBYLA optimizer.
+    Executes VQC training on the Parkinson's training set using COBYLA optimizer.
     Logs loss descent and computes held-out test split generalization metrics.
     """
     print("=" * 65)
-    print("AAROH QUANTUM ML PIPELINE: VARIATIONAL QUANTUM CLASSIFIER (VQC)")
+    print("AAROH QUANTUM ML PIPELINE: VARIATIONAL QUANTUM CLASSIFIER (PARKINSON'S)")
     print("=" * 65)
 
     data = load_and_preprocess_data(random_state=random_state)
@@ -206,15 +214,15 @@ def train_vqc(maxiter=50, random_state=42):
     print(f"  -> Optimization completed in {train_duration:.2f}s across {res.nfev} evaluations.")
     print(f"  -> Final Convergence Loss: {res.fun:.4f}")
 
-    print("\n[Step 2/2] Evaluating on Held-Out Test Split (n=114)...")
+    print(f"\n[Step 2/2] Evaluating on Held-Out Test Split (n={len(y_test)})...")
     test_probs = vqc.predict_proba(X_test_q)
     test_preds = (test_probs >= 0.5).astype(int)
 
     test_auc = float(roc_auc_score(y_test, test_probs))
     test_acc = float(accuracy_score(y_test, test_preds))
-    test_sens = float(recall_score(y_test, test_preds))
-    test_prec = float(precision_score(y_test, test_preds))
-    test_f1 = float(f1_score(y_test, test_preds))
+    test_sens = float(recall_score(y_test, test_preds, zero_division=0))
+    test_prec = float(precision_score(y_test, test_preds, zero_division=0))
+    test_f1 = float(f1_score(y_test, test_preds, zero_division=0))
 
     print(f"  -> Test ROC-AUC:     {test_auc:.4f}")
     print(f"  -> Test Accuracy:    {test_acc:.4f} ({test_acc*100:.1f}%)")
@@ -229,6 +237,7 @@ def train_vqc(maxiter=50, random_state=42):
     # Construct complete metrics payload
     metrics_payload = {
         "model": "Variational Quantum Classifier (VQC)",
+        "dataset": "UCI Parkinson's Voice Telemonitoring Dataset",
         "framework": f"Qiskit {qiskit.__version__} (Aer/Statevector)",
         "circuit_specification": {
             "num_qubits": NUM_QUBITS,
@@ -239,6 +248,7 @@ def train_vqc(maxiter=50, random_state=42):
             "encoding_range": "[0, pi]",
             "pca_components": 4,
             "pca_variance_explained": data["pca_total_variance"],
+            "pca_variance_ratios": data["pca_variance_ratio"],
         },
         "training_details": {
             "optimizer": "COBYLA",
@@ -253,9 +263,9 @@ def train_vqc(maxiter=50, random_state=42):
             "sample_size": len(y_test),
             "random_state": random_state,
             "honest_methodology_note": (
-                "Evaluated on a single 80/20 test split (n=114, seed=42). "
-                "Classical XGBoost is validated via 5-Fold Stratified Cross-Validation. "
-                "Direct comparison carries methodology asymmetry and should be viewed directionally."
+                "Evaluated on a single 80/20 test split (n=39, seed=42). "
+                "Classical XGBoost is validated via 5-Fold Stratified Cross-Validation (n=195). "
+                "Direct comparison carries methodology asymmetry and is presented transparently."
             ),
         },
         "metrics": {
@@ -300,10 +310,10 @@ class QuantumInferencePipeline:
         self.q_scaler = joblib.load(Q_SCALER_PATH)
         self.vqc = QuantumVQC(weights=self.weights)
 
-    def predict(self, raw_features_30):
+    def predict(self, raw_features_22):
         t0 = time.perf_counter()
 
-        x_arr = np.array(raw_features_30, dtype=float).reshape(1, -1)
+        x_arr = np.array(raw_features_22, dtype=float).reshape(1, -1)
         x_scaled = self.std_scaler.transform(x_arr)
         x_pca = self.pca.transform(x_scaled)
         x_q = self.q_scaler.transform(x_pca)
@@ -335,9 +345,9 @@ def get_quantum_inference_pipeline():
     return _cached_quantum_pipeline
 
 
-def predict_single_patient(raw_features_30):
+def predict_single_patient(raw_features_22):
     """
-    End-to-end inference for a single patient vector (30 features):
+    End-to-end inference for a single patient vector (22 acoustic features):
     1. StandardScaler normalization (cached in memory)
     2. PCA projection to 4 components (cached in memory)
     3. MinMaxScaler to [0, pi] (cached in memory)
@@ -345,7 +355,7 @@ def predict_single_patient(raw_features_30):
     Returns: dict with probability, raw expectation value, and execution duration ms.
     """
     pipeline = get_quantum_inference_pipeline()
-    return pipeline.predict(raw_features_30)
+    return pipeline.predict(raw_features_22)
 
 
 if __name__ == "__main__":

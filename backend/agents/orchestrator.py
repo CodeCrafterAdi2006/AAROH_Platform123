@@ -1,12 +1,14 @@
 """
-AAROH Deterministic Clinical Agent Orchestrator (Subphase 2.3)
-- Orchestrates a 4-stage clinical diagnostic workflow:
-  Stage 1: Data Ingestion & Quality Control Agent
-  Stage 2: Quantum Feature & State Encoding Agent
-  Stage 3: Classical Ensemble & Explainability Agent
-  Stage 4: Clinical Synthesis & Memo Generation Agent
+AAROH Deterministic Clinical Agent Orchestrator: Parkinson's Screening Pipeline
+- Orchestrates a 6-stage clinical screening workflow:
+  Stage 1: Data Ingestion & Quality Control Agent (22 acoustic features validation)
+  Stage 2: Classical Inference Agent (XGBoost inference)
+  Stage 3: Quantum Encoding Agent (PCA 4D + 4-Qubit VQC statevector simulation)
+  Stage 4: Hybrid Fusion Agent (0.31 Classical + 0.69 Quantum + Discordance safety check)
+  Stage 5: Explainability Synthesis Agent (TreeSHAP acoustic biomarker attribution)
+  Stage 6: Clinical Memo Agent (Diagnostic signal, ICD-10, recommended next steps)
 - Real-time event streaming via Server-Sent Events (SSE) protocol.
-- 100% deterministic & clinically auditable: Zero LLM hallucinations during computation.
+- 100% deterministic & clinically auditable: Zero hallucinations during computational inference.
 """
 
 import os
@@ -16,20 +18,19 @@ import time
 from typing import List, Dict, Any, Generator
 
 AGENTS_DIR = os.path.dirname(os.path.abspath(__file__))
-WORKSPACE_ROOT = os.path.abspath(os.path.join(AGENTS_DIR, "..", ".."))
-if WORKSPACE_ROOT not in sys.path:
-    sys.path.insert(0, WORKSPACE_ROOT)
+PROJECT_ROOT = os.path.abspath(os.path.join(AGENTS_DIR, "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from backend.models.explainability import explain_patient
 from backend.models.fallback_sim import predict_quantum_with_resilient_fallback
+from backend.models.fusion import fuse_predictions, predict_hybrid, get_hybrid_pipeline
 from backend.reports.memo_gen import format_clinical_memo
 
-# Feature names reference
-FEATURE_NAMES_PATH = os.path.join(WORKSPACE_ROOT, "backend", "models", "feature_names.json")
+FEATURE_NAMES_PATH = os.path.join(PROJECT_ROOT, "backend", "models", "feature_names.json")
 with open(FEATURE_NAMES_PATH, "r") as f:
     FEATURE_NAMES = json.load(f)
 
-# Configurable progressive cadence delay (seconds) between SSE stages to ensure clean frontend visualization
 DEFAULT_STAGE_STREAM_DELAY_SEC = 0.04
 
 
@@ -39,18 +40,16 @@ class ClinicalOrchestrationError(Exception):
 
 
 def validate_patient_input(raw_features: List[float]) -> List[float]:
-    """Validates patient input vector conforms to 30 clinical WBCD measurements."""
+    """Validates patient input vector conforms to 22 clinical acoustic measurements."""
     if not isinstance(raw_features, (list, tuple)):
         raise ClinicalOrchestrationError(f"Features must be a list of floats, got {type(raw_features).__name__}")
-    if len(raw_features) != 30:
-        raise ClinicalOrchestrationError(f"Expected exactly 30 WBCD biopsy features, received {len(raw_features)}")
-    
+    if len(raw_features) != 22:
+        raise ClinicalOrchestrationError(f"Expected exactly 22 acoustic voice features, received {len(raw_features)}")
+
     clean_vals = []
     for i, val in enumerate(raw_features):
         try:
             f_val = float(val)
-            if f_val < 0:
-                raise ValueError("Negative value")
             clean_vals.append(f_val)
         except (ValueError, TypeError):
             raise ClinicalOrchestrationError(f"Feature index {i} ('{FEATURE_NAMES[i]}') has invalid value: {val}")
@@ -63,44 +62,53 @@ def run_diagnostic_pipeline(
     force_fallback: bool = False,
 ) -> Dict[str, Any]:
     """
-    Synchronous full pipeline execution returning consolidated response.
+    Synchronous full 6-stage pipeline execution returning consolidated response.
     """
     t_start = time.perf_counter()
     clean_features = validate_patient_input(raw_features)
 
-    # 1. Quantum Pass
-    q_result = predict_quantum_with_resilient_fallback(clean_features, force_fallback=force_fallback)
-
-    # 2. Classical + SHAP Pass
+    # 1. Classical Inference & Explainability Pass
     exp_result = explain_patient(clean_features)
+    prob_classical = exp_result["probability_pd"]
 
-    # 3. Clinical Memo Synthesis
+    # 2. Quantum VQC Pass (with resilient fallback)
+    q_result = predict_quantum_with_resilient_fallback(clean_features, force_fallback=force_fallback)
+    prob_quantum = q_result["vqc_probability"]
+
+    # 3. Hybrid Fusion Pass
+    fusion_result = fuse_predictions(prob_classical, prob_quantum)
+    prob_hybrid = fusion_result["hybrid_probability"]
+
+    # 4. Clinical Memo Synthesis
     total_ms = (time.perf_counter() - t_start) * 1000.0
     memo = format_clinical_memo(
         patient_id=patient_id,
-        xgb_prob=exp_result["probability_malignant"],
-        vqc_prob=q_result["vqc_probability"],
+        xgb_prob=prob_classical,
+        vqc_prob=prob_quantum,
+        hybrid_prob=prob_hybrid,
         top_shap_features=exp_result["top_features"],
         narrative=exp_result["clinical_narrative"],
         raw_features=clean_features,
         execution_time_ms=total_ms,
+        model_consensus=fusion_result["consensus_status"],
     )
 
     return {
         "status": "success",
         "case_id": patient_id,
-        "quantum": q_result,
+        "fusion": fusion_result,
         "classical": {
             "prediction": exp_result["prediction"],
-            "probability_malignant": exp_result["probability_malignant"],
+            "probability_pd": exp_result["probability_pd"],
             "base_value": exp_result["base_value"],
             "output_margin": exp_result["output_margin"],
             "margin_additive_delta": exp_result["margin_additive_delta"],
             "top_features": exp_result["top_features"],
             "waterfall_steps": exp_result["waterfall_steps"],
-            "top_malignant_drivers": exp_result["top_malignant_drivers"],
-            "top_benign_drivers": exp_result["top_benign_drivers"],
+            "top_pd_drivers": exp_result["top_pd_drivers"],
+            "top_healthy_drivers": exp_result["top_healthy_drivers"],
         },
+        "quantum": q_result,
         "memo": memo,
         "total_latency_ms": round(total_ms, 2),
     }
@@ -130,13 +138,11 @@ def stream_diagnostic_pipeline(
         yield format_sse("stage_start", {
             "stage": "data_ingestion",
             "agent": "Data Ingestion & QC Agent",
-            "message": f"Validating 30 morphometric biopsy features for case {patient_id}...",
+            "message": f"Validating 22 acoustic telemonitoring biomarkers for case {patient_id}...",
             "timestamp": time.time(),
         })
 
         clean_features = validate_patient_input(raw_features)
-        
-        # Progressive yield cadence for frontend visualization
         if stage_delay_sec > 0:
             time.sleep(stage_delay_sec)
 
@@ -145,106 +151,156 @@ def stream_diagnostic_pipeline(
             "status": "VALIDATED",
             "feature_count": len(clean_features),
             "sample_biomarkers": {
-                "mean_radius": clean_features[0],
-                "mean_texture": clean_features[1],
-                "mean_perimeter": clean_features[2],
-                "mean_area": clean_features[3],
-                "mean_smoothness": clean_features[4],
+                "MDVP:Fo(Hz)": clean_features[0],
+                "MDVP:Fhi(Hz)": clean_features[1],
+                "MDVP:Jitter(%)": clean_features[4],
+                "MDVP:Shimmer": clean_features[8],
+                "HNR": clean_features[15],
             },
-            "quality_check": "Zero NaNs, valid morphological bounds verified.",
+            "quality_check": "Zero missing values, valid phonation range verified.",
         }
         yield format_sse("stage_complete", stage1_payload)
 
         # =========================================================================
-        # STAGE 2: Quantum Feature & State Encoding Agent
+        # STAGE 2: Classical Inference Agent
         # =========================================================================
         yield format_sse("stage_start", {
-            "stage": "quantum_encoding",
-            "agent": "Quantum Feature & State Encoding Agent",
-            "message": "Compressing 30D features to 4 PCA dimensions & encoding into 4-qubit Hilbert space...",
-            "timestamp": time.time(),
-        })
-
-        t_q0 = time.perf_counter()
-        q_result = predict_quantum_with_resilient_fallback(clean_features, force_fallback=force_fallback)
-        q_duration = (time.perf_counter() - t_q0) * 1000.0
-
-        if stage_delay_sec > 0:
-            time.sleep(stage_delay_sec)
-
-        stage2_payload = {
-            "stage": "quantum_encoding",
-            "status": "COMPUTED",
-            "pca_components": q_result["pca_features"],
-            "quantum_angles_rad": q_result["quantum_angles_rad"],
-            "expectation_value": q_result["expectation_value"],
-            "vqc_probability": q_result["vqc_probability"],
-            "vqc_prediction": q_result["vqc_prediction"],
-            "backend": q_result.get("backend", "Qiskit Aer"),
-            "routing": q_result.get("routing", "Primary"),
-            "latency_ms": round(q_duration, 2),
-        }
-        yield format_sse("stage_complete", stage2_payload)
-
-        # =========================================================================
-        # STAGE 3: Classical Ensemble & Explainability Agent
-        # =========================================================================
-        yield format_sse("stage_start", {
-            "stage": "classical_explainability",
-            "agent": "Classical Ensemble & Explainability Agent",
-            "message": "Executing XGBoost inference and calculating exact TreeSHAP attribution force vectors...",
+            "stage": "classical_inference",
+            "agent": "Classical Inference Agent",
+            "message": "Evaluating 22 features through 5-fold cross-validated XGBoost gradient-boosted trees...",
             "timestamp": time.time(),
         })
 
         t_c0 = time.perf_counter()
         exp_result = explain_patient(clean_features)
         c_duration = (time.perf_counter() - t_c0) * 1000.0
+        prob_classical = exp_result["probability_pd"]
+
+        if stage_delay_sec > 0:
+            time.sleep(stage_delay_sec)
+
+        stage2_payload = {
+            "stage": "classical_inference",
+            "status": "COMPUTED",
+            "probability_pd": prob_classical,
+            "prediction": exp_result["prediction"],
+            "margin": exp_result["output_margin"],
+            "latency_ms": round(c_duration, 2),
+        }
+        yield format_sse("stage_complete", stage2_payload)
+
+        # =========================================================================
+        # STAGE 3: Quantum Encoding Agent
+        # =========================================================================
+        yield format_sse("stage_start", {
+            "stage": "quantum_encoding",
+            "agent": "Quantum Feature & State Encoding Agent",
+            "message": "Compressing 22D acoustic space into 4 principal eigenmodes & evaluating 4-qubit VQC statevector...",
+            "timestamp": time.time(),
+        })
+
+        t_q0 = time.perf_counter()
+        q_result = predict_quantum_with_resilient_fallback(clean_features, force_fallback=force_fallback)
+        q_duration = (time.perf_counter() - t_q0) * 1000.0
+        prob_quantum = q_result["vqc_probability"]
 
         if stage_delay_sec > 0:
             time.sleep(stage_delay_sec)
 
         stage3_payload = {
-            "stage": "classical_explainability",
+            "stage": "quantum_encoding",
             "status": "COMPUTED",
-            "xgb_prediction": exp_result["prediction"],
-            "xgb_probability": exp_result["probability_malignant"],
-            "base_value": exp_result["base_value"],
-            "output_margin": exp_result["output_margin"],
-            "shap_additive_delta": exp_result["margin_additive_delta"],
-            "top_features": exp_result["top_features"][:6],
-            "waterfall_steps": exp_result["waterfall_steps"][:7],
-            "top_malignant_drivers": exp_result["top_malignant_drivers"][:3],
-            "top_benign_drivers": exp_result["top_benign_drivers"][:3],
-            "latency_ms": round(c_duration, 2),
+            "pca_features": q_result["pca_features"],
+            "quantum_angles_rad": q_result["quantum_angles_rad"],
+            "expectation_value": q_result["expectation_value"],
+            "vqc_probability": prob_quantum,
+            "backend": q_result.get("backend", "Qiskit Aer"),
+            "routing": q_result.get("routing", "Primary"),
+            "latency_ms": round(q_duration, 2),
         }
         yield format_sse("stage_complete", stage3_payload)
 
         # =========================================================================
-        # STAGE 4: Clinical Synthesis & Memo Generation Agent
+        # STAGE 4: Hybrid Fusion Agent
         # =========================================================================
         yield format_sse("stage_start", {
-            "stage": "clinical_synthesis",
-            "agent": "Clinical Synthesis & Memo Generation Agent",
-            "message": "Synthesizing consensus diagnosis, assigning ICD-10 coding, and formatting pathology consultation memo...",
+            "stage": "hybrid_fusion",
+            "agent": "Hybrid Consensus Fusion Agent",
+            "message": "Applying validation-tuned weights (0.31 Classical + 0.69 Quantum) and discordance audit...",
+            "timestamp": time.time(),
+        })
+
+        fusion_result = fuse_predictions(prob_classical, prob_quantum)
+        prob_hybrid = fusion_result["hybrid_probability"]
+
+        if stage_delay_sec > 0:
+            time.sleep(stage_delay_sec)
+
+        stage4_payload = {
+            "stage": "hybrid_fusion",
+            "status": "FUSED",
+            "hybrid_probability": prob_hybrid,
+            "classical_probability": prob_classical,
+            "quantum_probability": prob_quantum,
+            "alpha_weight": fusion_result["alpha_weight"],
+            "beta_weight": fusion_result["beta_weight"],
+            "discordance_delta": fusion_result["discordance_delta"],
+            "consensus_status": fusion_result["consensus_status"],
+        }
+        yield format_sse("stage_complete", stage4_payload)
+
+        # =========================================================================
+        # STAGE 5: Explainability Synthesis Agent
+        # =========================================================================
+        yield format_sse("stage_start", {
+            "stage": "explainability_synthesis",
+            "agent": "Explainability Synthesis Agent",
+            "message": "Calculating exact TreeSHAP attribution force vectors and isolating primary acoustic dysregulation drivers...",
+            "timestamp": time.time(),
+        })
+
+        if stage_delay_sec > 0:
+            time.sleep(stage_delay_sec)
+
+        stage5_payload = {
+            "stage": "explainability_synthesis",
+            "status": "COMPUTED",
+            "shap_additive_delta": exp_result["margin_additive_delta"],
+            "top_features": exp_result["top_features"][:6],
+            "waterfall_steps": exp_result["waterfall_steps"][:7],
+            "top_pd_drivers": exp_result["top_pd_drivers"][:3],
+            "top_healthy_drivers": exp_result["top_healthy_drivers"][:3],
+        }
+        yield format_sse("stage_complete", stage5_payload)
+
+        # =========================================================================
+        # STAGE 6: Clinical Memo Agent
+        # =========================================================================
+        yield format_sse("stage_start", {
+            "stage": "clinical_memo",
+            "agent": "Clinical Memo & Action Agent",
+            "message": "Synthesizing consensus screening signal, mapping ICD-10 diagnostic coding, and generating clinical consultation memo...",
             "timestamp": time.time(),
         })
 
         total_ms = (time.perf_counter() - t_start) * 1000.0
         memo = format_clinical_memo(
             patient_id=patient_id,
-            xgb_prob=exp_result["probability_malignant"],
-            vqc_prob=q_result["vqc_probability"],
+            xgb_prob=prob_classical,
+            vqc_prob=prob_quantum,
+            hybrid_prob=prob_hybrid,
             top_shap_features=exp_result["top_features"],
             narrative=exp_result["clinical_narrative"],
             raw_features=clean_features,
             execution_time_ms=total_ms,
+            model_consensus=fusion_result["consensus_status"],
         )
 
         if stage_delay_sec > 0:
             time.sleep(stage_delay_sec)
 
-        stage4_payload = {
-            "stage": "clinical_synthesis",
+        stage6_payload = {
+            "stage": "clinical_memo",
             "status": "COMPLETED",
             "diagnosis": memo["diagnosis"],
             "risk_tier": memo["risk_tier"],
@@ -253,16 +309,17 @@ def stream_diagnostic_pipeline(
             "recommended_action": memo["recommended_action"],
             "memo_markdown": memo["memo_markdown"],
         }
-        yield format_sse("stage_complete", stage4_payload)
+        yield format_sse("stage_complete", stage6_payload)
 
         # =========================================================================
-        # FINAL PAYLOAD
+        # FINAL CONSOLIDATED RESULT PAYLOAD
         # =========================================================================
         yield format_sse("final_result", {
             "case_id": patient_id,
             "status": "success",
-            "quantum": q_result,
+            "fusion": fusion_result,
             "classical": exp_result,
+            "quantum": q_result,
             "memo": memo,
             "total_latency_ms": round(total_ms, 2),
         })

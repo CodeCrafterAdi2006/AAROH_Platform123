@@ -7,27 +7,36 @@ export default {
   theme: {
     extend: {
       colors: {
-        dark: {
-          bg: '#080c14',
-          surface: '#0d131f',
-          card: '#111827',
-          border: '#1f293d',
+        canvas: '#F8FAFC',
+        card: '#FFFFFF',
+        engine: '#0F172A',
+        teal: {
+          50: '#F0FDFA',
+          100: '#CCFBF1',
+          200: '#99F6E4',
+          300: '#5EEAD4',
+          400: '#2DD4BF',
+          500: '#14B8A6',
+          600: '#0D9488',
+          700: '#0F766E',
+          800: '#115E59',
+          900: '#134E4A',
         },
-        quantum: {
-          light: '#67e8f9',
-          DEFAULT: '#06b6d4',
-          dark: '#083344',
-          accent: '#8b5cf6',
-        },
-        clinical: {
-          malignant: '#f43f5e',
-          benign: '#10b981',
-          borderline: '#f59e0b',
-          info: '#3b82f6',
-        }
       },
       fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        heading: ['Outfit', 'Inter', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+      },
+      animation: {
+        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'wave-bar': 'wave 1.2s ease-in-out infinite alternate',
+      },
+      keyframes: {
+        wave: {
+          '0%': { transform: 'scaleY(0.3)' },
+          '100%': { transform: 'scaleY(1.0)' },
+        }
       }
     },
   },

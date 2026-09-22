@@ -8,3 +8,4 @@ qiskit-aer>=0.14.0
 numpy>=1.26.0
 pandas>=2.2.0
 httpx>=0.28.0
+sqlalchemy>=2.0.0

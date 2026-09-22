@@ -1,10 +1,10 @@
 """
-AAROH Explainability Engine: SHAP TreeExplainer for Classical XGBoost
-- Dataset: Wisconsin Breast Cancer Diagnostic (WBCD)
+AAROH Explainability Engine: SHAP TreeExplainer for Parkinson's XGBoost Model
+- Dataset: UCI Parkinson's Voice Telemonitoring Dataset (22 acoustic features)
 - Method: Exact TreeSHAP (Lundberg & Lee, Nature Machine Intelligence 2020)
 - Computes additive feature attributions for both per-patient inference and global cohort ranking.
-- Additive Property: sum(phi_i) + base_value == model_output_margin
-- Provides structured payload for frontend Waterfall charts and clinical consultation memos.
+- Additive Invariant: sum(phi_i) + base_value == model_output_margin
+- Provides structured payload for frontend Waterfall charts, feature rankings, and clinical consultation memos.
 """
 
 import os
@@ -12,20 +12,21 @@ import sys
 import json
 import time
 import numpy as np
+import pandas as pd
 import joblib
 import xgboost as xgb
 import shap
-from sklearn.datasets import load_breast_cancer
 
 # Guard for Windows threading
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 
 MODELS_DIR = os.path.dirname(os.path.abspath(__file__))
-WORKSPACE_ROOT = os.path.abspath(os.path.join(MODELS_DIR, "..", ".."))
-if WORKSPACE_ROOT not in sys.path:
-    sys.path.insert(0, WORKSPACE_ROOT)
+PROJECT_ROOT = os.path.abspath(os.path.join(MODELS_DIR, "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
+DATA_PATH = os.path.join(PROJECT_ROOT, "data", "parkinsons.csv")
 MODEL_PATH = os.path.join(MODELS_DIR, "xgboost_model.json")
 SCALER_PATH = os.path.join(MODELS_DIR, "scaler.joblib")
 FEATURE_NAMES_PATH = os.path.join(MODELS_DIR, "feature_names.json")
@@ -39,7 +40,7 @@ def _sigmoid(x):
 
 class ShapExplainabilityEngine:
     """
-    Cached SHAP TreeExplainer engine for rapid per-patient clinical attribution.
+    Cached SHAP TreeExplainer engine for rapid per-patient Parkinson's clinical attribution.
     """
 
     def __init__(self):
@@ -62,19 +63,19 @@ class ShapExplainabilityEngine:
         self.base_value = float(np.array(ev).ravel()[0])
         self.base_probability = float(_sigmoid(self.base_value))
 
-    def explain_patient(self, raw_features_30, top_k=10):
+    def explain_patient(self, raw_features_22, top_k=10):
         """
-        Computes exact SHAP attributions for a 30-feature patient biopsy vector.
+        Computes exact SHAP attributions for a 22-feature patient acoustic vector.
         Returns:
           - base_value & base_probability
           - output_margin & output_probability
           - top_features: list formatted for interactive Waterfall chart
-          - top_malignant_drivers: features increasing cancer risk
-          - top_benign_drivers: features decreasing cancer risk
+          - top_pd_drivers: features increasing Parkinson's risk
+          - top_healthy_drivers: features decreasing Parkinson's risk
           - clinical_narrative: auto-synthesized explanation for physician memo
         """
         t0 = time.perf_counter()
-        x_raw = np.array(raw_features_30, dtype=float).reshape(1, -1)
+        x_raw = np.array(raw_features_22, dtype=float).reshape(1, -1)
         x_scaled = self.scaler.transform(x_raw)
 
         # Compute SHAP values using modern Explanation API
@@ -84,7 +85,7 @@ class ShapExplainabilityEngine:
         base_prob = float(_sigmoid(base_val))
 
         output_margin = float(self.clf.predict(x_scaled, output_margin=True)[0])
-        prob_malignant = float(self.clf.predict_proba(x_scaled)[0, 1])
+        prob_pd = float(self.clf.predict_proba(x_scaled)[0, 1])
 
         # Verify additive property: sum(shap) + base_value == output_margin
         reconstructed_margin = float(np.sum(shap_vals) + base_val)
@@ -99,11 +100,11 @@ class ShapExplainabilityEngine:
             all_features.append({
                 "feature_index": i,
                 "feature_name": name,
-                "raw_value": round(val, 4),
+                "raw_value": round(val, 6),
                 "standardized_z_score": round(scaled_val, 3),
                 "shap_value": round(phi, 4),
                 "abs_shap": abs(phi),
-                "direction": "malignant" if phi > 0 else "benign",
+                "direction": "pd_associated" if phi > 0 else "protective",
             })
 
         # Sort by absolute SHAP magnitude
@@ -129,40 +130,40 @@ class ShapExplainabilityEngine:
             })
 
         # Drivers
-        malignant_drivers = [f for f in sorted_features if f["shap_value"] > 0][:5]
-        benign_drivers = [f for f in sorted_features if f["shap_value"] < 0][:5]
+        pd_drivers = [f for f in sorted_features if f["shap_value"] > 0][:5]
+        healthy_drivers = [f for f in sorted_features if f["shap_value"] < 0][:5]
 
-        # Generate narrative for physician consultation memo
-        if prob_malignant >= 0.5:
-            top_names = [f["feature_name"] for f in malignant_drivers[:2]]
+        # Generate clinical narrative for physician consultation memo
+        if prob_pd >= 0.5:
+            top_names = [f["feature_name"] for f in pd_drivers[:2]] if len(pd_drivers) >= 2 else ["Vocal Perturbation"]
             narrative = (
-                f"Prediction of Malignancy ({prob_malignant*100:.1f}%) is predominantly driven by "
-                f"elevated nuclear morphometry in '{top_names[0]}' (+{malignant_drivers[0]['shap_value']:.2f}) "
-                f"and '{top_names[1]}' (+{malignant_drivers[1]['shap_value']:.2f}), "
-                f"indicating significant structural atypia characteristic of carcinoma."
+                f"Elevated Parkinson's screening signal ({prob_pd*100:.1f}%) is predominantly driven by "
+                f"acoustic perturbation in '{top_names[0]}' (+{pd_drivers[0]['shap_value']:.2f})"
+                + (f" and '{top_names[1]}' (+{pd_drivers[1]['shap_value']:.2f})" if len(pd_drivers) >= 2 else "")
+                + ", indicating cycle-to-cycle frequency/amplitude instability and dysphonia characteristic of early hypokinetic dysarthria."
             )
         else:
-            top_names = [f["feature_name"] for f in benign_drivers[:2]]
+            top_names = [f["feature_name"] for f in healthy_drivers[:2]] if len(healthy_drivers) >= 2 else ["Harmonicity"]
             narrative = (
-                f"Prediction of Benign Pathology ({(1.0 - prob_malignant)*100:.1f}% confidence) is supported by "
-                f"favorable nuclear metrics in '{top_names[0]}' ({benign_drivers[0]['shap_value']:.2f}) "
-                f"and '{top_names[1]}' ({benign_drivers[1]['shap_value']:.2f}), "
-                f"demonstrating regular cell perimeter and uniform chromatin architecture."
+                f"Baseline screening signal ({(1.0 - prob_pd)*100:.1f}% healthy concordance) is supported by "
+                f"stable phonation metrics in '{top_names[0]}' ({healthy_drivers[0]['shap_value']:.2f})"
+                + (f" and '{top_names[1]}' ({healthy_drivers[1]['shap_value']:.2f})" if len(healthy_drivers) >= 2 else "")
+                + ", demonstrating normal vocal periodicity and low microperturbation indices."
             )
 
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
 
         return {
-            "prediction": 1 if prob_malignant >= 0.5 else 0,
-            "probability_malignant": round(prob_malignant, 4),
+            "prediction": 1 if prob_pd >= 0.5 else 0,
+            "probability_pd": round(prob_pd, 4),
             "base_value": round(base_val, 4),
             "base_probability": round(base_prob, 4),
             "output_margin": round(output_margin, 4),
             "margin_additive_delta": round(margin_delta, 8),
             "top_features": top_features,
             "waterfall_steps": waterfall_steps,
-            "top_malignant_drivers": malignant_drivers,
-            "top_benign_drivers": benign_drivers,
+            "top_pd_drivers": pd_drivers,
+            "top_healthy_drivers": healthy_drivers,
             "clinical_narrative": narrative,
             "execution_time_ms": round(elapsed_ms, 2),
         }
@@ -170,18 +171,20 @@ class ShapExplainabilityEngine:
 
 def compute_and_save_global_importance():
     """
-    Computes global cohort-level SHAP rankings across all 569 samples in WBCD.
+    Computes global cohort-level SHAP rankings across all samples in the Parkinson's dataset.
     Saves to global_feature_importance.json.
     """
     print("=" * 65)
-    print("AAROH EXPLAINABILITY ENGINE: GLOBAL SHAP COHORT BENCHMARK")
+    print("AAROH EXPLAINABILITY ENGINE: GLOBAL SHAP COHORT BENCHMARK (PARKINSON'S)")
     print("=" * 65)
 
     engine = ShapExplainabilityEngine()
-    raw = load_breast_cancer()
-    X_scaled = engine.scaler.transform(raw.data)
+    df = pd.read_csv(DATA_PATH)
+    feature_cols = engine.feature_names
+    X_raw = df[feature_cols].values
+    X_scaled = engine.scaler.transform(X_raw)
 
-    print(f"Computing exact TreeSHAP values for all {len(raw.data)} WBCD samples...")
+    print(f"Computing exact TreeSHAP values for all {len(X_raw)} Parkinson's acoustic recordings...")
     t0 = time.time()
     all_shap = engine.explainer.shap_values(X_scaled)
     duration = time.time() - t0
@@ -200,7 +203,7 @@ def compute_and_save_global_importance():
         })
 
     payload = {
-        "cohort_size": len(raw.data),
+        "cohort_size": len(X_raw),
         "total_features": len(engine.feature_names),
         "method": "Mean Absolute TreeSHAP Attribution (cohort-wide)",
         "base_value": round(engine.base_value, 4),
@@ -212,7 +215,7 @@ def compute_and_save_global_importance():
         json.dump(payload, f, indent=2)
 
     print(f"[OK] Saved global feature importance to {GLOBAL_IMPORTANCE_PATH}")
-    print("\nTop 5 Clinical Biomarkers:")
+    print("\nTop 5 Acoustic Biomarkers:")
     for b in global_rankings[:5]:
         print(f"  #{b['rank']} {b['feature_name']:<25} | Mean |SHAP|: {b['mean_abs_shap']:.4f}")
     print("=" * 65)
@@ -230,30 +233,10 @@ def get_explainability_engine():
     return _cached_engine
 
 
-def explain_patient(raw_features_30, top_k=10):
+def explain_patient(raw_features_22, top_k=10):
     engine = get_explainability_engine()
-    return engine.explain_patient(raw_features_30, top_k=top_k)
+    return engine.explain_patient(raw_features_22, top_k=top_k)
 
 
 if __name__ == "__main__":
     compute_and_save_global_importance()
-    # Self-test on reference samples
-    raw_data = load_breast_cancer()
-    sample_mal = raw_data.data[raw_data.target == 0][0]
-    sample_ben = raw_data.data[raw_data.target == 1][0]
-
-    print("\n[Self-Test: Malignant Reference Patient]")
-    res_m = explain_patient(sample_mal)
-    print(f"  Probability: {res_m['probability_malignant']*100:.1f}% (Margin: {res_m['output_margin']})")
-    print(f"  Narrative: {res_m['clinical_narrative']}")
-    print(f"  Top 3 Drivers:")
-    for f in res_m["top_features"][:3]:
-        print(f"    - {f['feature_name']}: {f['shap_value']:+.4f} (Raw: {f['raw_value']})")
-
-    print("\n[Self-Test: Benign Reference Patient]")
-    res_b = explain_patient(sample_ben)
-    print(f"  Probability: {res_b['probability_malignant']*100:.1f}% (Margin: {res_b['output_margin']})")
-    print(f"  Narrative: {res_b['clinical_narrative']}")
-    print(f"  Top 3 Drivers:")
-    for f in res_b["top_features"][:3]:
-        print(f"    - {f['feature_name']}: {f['shap_value']:+.4f} (Raw: {f['raw_value']})")

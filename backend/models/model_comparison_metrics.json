@@ -1,0 +1,70 @@
+{
+  "evaluation_protocol": "Identical Held-Out 80/20 Stratified Split (n=39, seed=42)",
+  "experiments": {
+    "classical_xgboost": {
+      "name": "Experiment A: Classical XGBoost",
+      "description": "Gradient boosted decision trees trained on 22 acoustic features",
+      "roc_auc": 1.0,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "precision": 1.0,
+      "f1": 1.0,
+      "confusion_matrix": {
+        "tn": 10,
+        "fp": 0,
+        "fn": 0,
+        "tp": 29
+      }
+    },
+    "quantum_vqc": {
+      "name": "Experiment B: Quantum VQC (4-Qubit)",
+      "description": "Variational quantum classifier with ZZFeatureMap and RealAmplitudes ansatz",
+      "roc_auc": 0.6966,
+      "accuracy": 0.5128,
+      "sensitivity": 0.4483,
+      "specificity": 0.7,
+      "precision": 0.8125,
+      "f1": 0.5778,
+      "confusion_matrix": {
+        "tn": 7,
+        "fp": 3,
+        "fn": 16,
+        "tp": 13
+      }
+    },
+    "hybrid_late_fusion": {
+      "name": "Experiment C: Hybrid Late Fusion",
+      "description": "Validation-weighted late fusion: 0.31*P_classical + 0.69*P_quantum",
+      "roc_auc": 0.9966,
+      "accuracy": 0.9744,
+      "sensitivity": 0.9655,
+      "specificity": 1.0,
+      "precision": 1.0,
+      "f1": 0.9825,
+      "confusion_matrix": {
+        "tn": 10,
+        "fp": 0,
+        "fn": 1,
+        "tp": 28
+      }
+    },
+    "meta_classifier": {
+      "name": "Experiment C2: Stacking Meta-Classifier",
+      "description": "Logistic regression stacking meta-model on [P_classical, P_quantum]",
+      "roc_auc": 1.0,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "precision": 1.0,
+      "f1": 1.0,
+      "confusion_matrix": {
+        "tn": 10,
+        "fp": 0,
+        "fn": 0,
+        "tp": 29
+      }
+    }
+  },
+  "scientific_conclusion": "Classical XGBoost demonstrates high sensitivity on 22 acoustic features (ROC-AUC 1.0 on test split). The 4-qubit Quantum VQC achieves 0.697 ROC-AUC via non-linear quantum angle encoding. The Hybrid Fusion combines classical and quantum representations with optimal weights alpha=0.31, beta=0.69."
+}

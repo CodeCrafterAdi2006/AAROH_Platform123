@@ -11,6 +11,7 @@ import os
 import sys
 import time
 import numpy as np
+import pandas as pd
 import joblib
 
 # Guard for Windows threading
@@ -18,9 +19,10 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 
 MODELS_DIR = os.path.dirname(os.path.abspath(__file__))
-WORKSPACE_ROOT = os.path.abspath(os.path.join(MODELS_DIR, "..", ".."))
-if WORKSPACE_ROOT not in sys.path:
-    sys.path.insert(0, WORKSPACE_ROOT)
+PROJECT_ROOT = os.path.abspath(os.path.join(MODELS_DIR, "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 PARAMS_PATH = os.path.join(MODELS_DIR, "vqc_params_pretrained.npy")
 PCA_PATH = os.path.join(MODELS_DIR, "pca.joblib")
 Q_SCALER_PATH = os.path.join(MODELS_DIR, "quantum_scaler.joblib")
@@ -188,10 +190,10 @@ class FallbackInferencePipeline:
         self.q_scaler = joblib.load(Q_SCALER_PATH)
         self.engine = NumpyVQCReplay(params_path=PARAMS_PATH)
 
-    def predict(self, raw_features_30):
+    def predict(self, raw_features_22):
         t0 = time.perf_counter()
 
-        x_arr = np.array(raw_features_30, dtype=float).reshape(1, -1)
+        x_arr = np.array(raw_features_22, dtype=float).reshape(1, -1)
         x_scaled = self.std_scaler.transform(x_arr)
         x_pca = self.pca.transform(x_scaled)
         x_q = self.q_scaler.transform(x_pca)[0]
@@ -225,17 +227,17 @@ def get_fallback_inference_pipeline():
     return _cached_fallback_pipeline
 
 
-def predict_single_patient_numpy(raw_features_30):
+def predict_single_patient_numpy(raw_features_22):
     """
-    End-to-end fallback inference for a single 30-feature biopsy vector.
+    End-to-end fallback inference for a single 22-feature acoustic vector.
     Executes StandardScaler -> PCA(4) -> MinMaxScaler -> NumPy statevector simulation.
     Uses singleton cached pipeline to execute in memory without per-call disk I/O.
     """
     pipeline = get_fallback_inference_pipeline()
-    return pipeline.predict(raw_features_30)
+    return pipeline.predict(raw_features_22)
 
 
-def predict_quantum_with_resilient_fallback(raw_features_30, force_fallback=False):
+def predict_quantum_with_resilient_fallback(raw_features_22, force_fallback=False):
     """
     Resilient routing wrapper:
     Attempts primary Qiskit Aer simulation first.
@@ -243,20 +245,20 @@ def predict_quantum_with_resilient_fallback(raw_features_30, force_fallback=Fals
     transparently falls back to pure NumPy statevector simulation.
     """
     if force_fallback:
-        result = predict_single_patient_numpy(raw_features_30)
+        result = predict_single_patient_numpy(raw_features_22)
         result["routing"] = "Forced NumPy Fallback"
         return result
 
     try:
         from backend.models.quantum import predict_single_patient
-        result = predict_single_patient(raw_features_30)
+        result = predict_single_patient(raw_features_22)
         result["is_fallback"] = False
-        result["backend"] = "Qiskit 2.5.2 (Aer/Statevector)"
+        result["backend"] = "Qiskit (StatevectorEstimator)"
         result["routing"] = "Primary Qiskit Engine"
         return result
     except Exception as e:
         # Fallback triggered
-        result = predict_single_patient_numpy(raw_features_30)
+        result = predict_single_patient_numpy(raw_features_22)
         result["fallback_triggered"] = True
         result["fallback_reason"] = str(e)
         result["routing"] = "Resilient NumPy Fallback (Auto-Triggered)"
@@ -265,50 +267,50 @@ def predict_quantum_with_resilient_fallback(raw_features_30, force_fallback=Fals
 
 def self_test_verification():
     """
-    Compares pure NumPy engine against Qiskit Aer on reference samples.
+    Compares pure NumPy engine against Qiskit Aer on reference Parkinson's samples.
     """
     print("=" * 65)
-    print("AAROH SUBPHASE 1.4: NUMPY FALLBACK SIMULATOR SELF-TEST")
+    print("AAROH QUANTUM ENGINE: NUMPY FALLBACK SIMULATOR SELF-TEST")
     print("=" * 65)
 
-    from sklearn.datasets import load_breast_cancer
-    raw = load_breast_cancer()
-    sample_m = raw.data[raw.target == 0][0]
-    sample_b = raw.data[raw.target == 1][0]
+    df = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "parkinsons.csv"))
+    features = [c for c in df.columns if c not in ["name", "status"]]
+    sample_pd = df[df["status"] == 1][features].values[0]
+    sample_healthy = df[df["status"] == 0][features].values[0]
 
     # Test NumPy standalone
     t0 = time.perf_counter()
-    res_m = predict_single_patient_numpy(sample_m)
-    res_b = predict_single_patient_numpy(sample_b)
+    res_pd = predict_single_patient_numpy(sample_pd)
+    res_healthy = predict_single_patient_numpy(sample_healthy)
     speed_ms = (time.perf_counter() - t0) * 1000.0 / 2.0
 
     print(f"NumPy Fallback Speed: {speed_ms:.2f} ms per patient (sub-millisecond!)")
-    print(f"Malignant Reference -> Prob: {res_m['vqc_probability']}, Pred: {res_m['vqc_prediction']}, Ev: {res_m['expectation_value']}")
-    print(f"Benign Reference    -> Prob: {res_b['vqc_probability']}, Pred: {res_b['vqc_prediction']}, Ev: {res_b['expectation_value']}")
+    print(f"Parkinson's Sample -> Prob: {res_pd['vqc_probability']}, Pred: {res_pd['vqc_prediction']}, Ev: {res_pd['expectation_value']}")
+    print(f"Healthy Control    -> Prob: {res_healthy['vqc_probability']}, Pred: {res_healthy['vqc_prediction']}, Ev: {res_healthy['expectation_value']}")
 
     # Cross-verify with Qiskit
     try:
         from backend.models.quantum import predict_single_patient
-        qiskit_m = predict_single_patient(sample_m)
-        qiskit_b = predict_single_patient(sample_b)
+        qiskit_pd = predict_single_patient(sample_pd)
+        qiskit_healthy = predict_single_patient(sample_healthy)
 
-        diff_m = abs(res_m["expectation_value"] - qiskit_m["expectation_value"])
-        diff_b = abs(res_b["expectation_value"] - qiskit_b["expectation_value"])
+        diff_pd = abs(res_pd["expectation_value"] - qiskit_pd["expectation_value"])
+        diff_healthy = abs(res_healthy["expectation_value"] - qiskit_healthy["expectation_value"])
 
-        print(f"\n[Verification against Qiskit Aer]")
-        print(f"  Malignant Expectation Delta: {diff_m:.6e}")
-        print(f"  Benign Expectation Delta:    {diff_b:.6e}")
+        print("\n[Verification against Qiskit Aer]")
+        print(f"  Parkinson's Sample Expectation Delta: {diff_pd:.6e}")
+        print(f"  Healthy Control Expectation Delta:    {diff_healthy:.6e}")
 
-        assert diff_m < 1e-4, f"Delta too high for malignant sample: {diff_m}"
-        assert diff_b < 1e-4, f"Delta too high for benign sample: {diff_b}"
-        print("  [SUCCESS] NumPy simulator matches Qiskit Aer expectation values exactly!")
+        assert diff_pd < 1e-4, f"Delta too high for Parkinson's sample: {diff_pd}"
+        assert diff_healthy < 1e-4, f"Delta too high for Healthy sample: {diff_healthy}"
+        print("  [SUCCESS] NumPy simulator matches Qiskit expectation values exactly!")
     except Exception as e:
-        print(f"  Note: Qiskit verification skipped or errored: {e}")
+        print(f"  Note: Qiskit verification error: {e}")
 
     # Test Resilient routing
-    routed_primary = predict_quantum_with_resilient_fallback(sample_m, force_fallback=False)
-    routed_fallback = predict_quantum_with_resilient_fallback(sample_m, force_fallback=True)
-    print(f"\n[Routing Tests]")
+    routed_primary = predict_quantum_with_resilient_fallback(sample_pd, force_fallback=False)
+    routed_fallback = predict_quantum_with_resilient_fallback(sample_pd, force_fallback=True)
+    print("\n[Routing Tests]")
     print(f"  Primary Routing:  {routed_primary['backend']} ({routed_primary['execution_time_ms']} ms)")
     print(f"  Fallback Routing: {routed_fallback['backend']} ({routed_fallback['execution_time_ms']} ms)")
     print("=" * 65)

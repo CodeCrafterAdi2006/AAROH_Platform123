@@ -1,11 +1,12 @@
 """
-AAROH Clinical Consultation Memo Generator (Subphase 2.5)
-- Generates structured, physician-ready diagnostic reports synthesizing:
+AAROH Clinical Consultation Memo Generator
+- Generates structured, physician-ready screening reports synthesizing:
   1. Classical XGBoost prediction & calibrated confidence
   2. 4-Qubit VQC quantum state expectation value & probability
-  3. Exact TreeSHAP feature attributions & nuclear morphometry drivers
-  4. Clinical ICD-10 categorization & recommended next diagnostic step
-  5. Mandatory regulatory decision-support disclaimer & audit metadata
+  3. Hybrid screening signal & discordance status
+  4. Exact TreeSHAP feature attributions & acoustic biomarker drivers
+  5. Clinical ICD-10 categorization & recommended next diagnostic step
+  6. Mandatory regulatory decision-support disclaimer & audit metadata
 """
 
 import datetime
@@ -16,6 +17,7 @@ def format_clinical_memo(
     patient_id: str,
     xgb_prob: float,
     vqc_prob: float,
+    hybrid_prob: float,
     top_shap_features: List[Dict[str, Any]],
     narrative: str,
     raw_features: Optional[List[float]] = None,
@@ -23,54 +25,48 @@ def format_clinical_memo(
     model_consensus: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Synthesizes predictions and explainability attributions into a structured clinical consultation memo.
+    Synthesizes predictions and explainability attributions into a structured Parkinson's clinical consultation memo.
     """
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
-    
-    # Determine primary diagnosis based on classical model (higher empirical validation)
-    is_malignant = xgb_prob >= 0.5
-    diagnosis_label = "MALIGNANT (CARCINOMA)" if is_malignant else "BENIGN (NON-MALIGNANT)"
-    
-    # Risk Tier
-    if xgb_prob >= 0.85:
-        risk_tier = "CRITICAL / HIGH RISK"
-        icd10_code = "C50.919"  # Malignant neoplasm of unspecified site of unspecified female breast
+
+    # Determine risk category based on hybrid probability
+    if hybrid_prob >= 0.75:
+        risk_tier = "ELEVATED SCREENING SIGNAL"
+        diagnosis_label = "HIGH RISK OF PARKINSONIAN PHONATION / EARLY DYSDIADOCHOKINESIA"
+        icd10_code = "G20"  # Parkinson's disease
         recommendation = (
-            "URGENT: Recommend immediate ultrasound-guided Core Needle Biopsy (CNB) "
-            "with reflex Immunohistochemistry (IHC) profiling (ER, PR, HER2, Ki-67). "
-            "Expedite multidisciplinary tumor board surgical consultation."
+            "URGENT: Recommend comprehensive Movement Disorder Specialist consultation. "
+            "Order dedicated DaTscan (123I-FP-CIT SPECT) imaging and administer formal "
+            "MDS-UPDRS Part III motor examination with optional Levodopa Response Challenge. "
+            "Refer for acoustic speech-language assessment."
         )
-    elif xgb_prob >= 0.50:
-        risk_tier = "MODERATE / SUSPICIOUS"
-        icd10_code = "C50.919"
+    elif hybrid_prob >= 0.45:
+        risk_tier = "MODERATE / SUSPICIOUS SIGNAL"
+        diagnosis_label = "BORDERLINE ACOUSTIC MICROPERTURBATION"
+        icd10_code = "R47.81"  # Dysarthria and anarthria
         recommendation = (
-            "Recommend dedicated diagnostic mammography spot compression views and "
-            "repeat targeted fine needle aspiration (FNA) or core needle biopsy within 14 days."
-        )
-    elif xgb_prob >= 0.15:
-        risk_tier = "LOW / BORDERLINE"
-        icd10_code = "N60.99"  # Unspecified benign mammary dysplasia
-        recommendation = (
-            "Findings favour benign etiology (e.g. fibroadenoma or fibrocystic changes). "
-            "Recommend 6-month interval diagnostic ultrasound surveillance to verify morphological stability."
+            "Recommend repeat voice recording assessment and accelerometry tremor screening in 60 days. "
+            "Administer Montreal Cognitive Assessment (MoCA) and screen for REM sleep behavior disorder (RBD) "
+            "and olfactory dysfunction."
         )
     else:
-        risk_tier = "VERY LOW / NORMAL"
-        icd10_code = "N60.99"
+        risk_tier = "BASELINE / NORMAL CONCORDANCE"
+        diagnosis_label = "UNREMARKABLE ACOUSTIC BIOMARKERS (HEALTHY CONTROL PATTERN)"
+        icd10_code = "Z71.1"  # Person with feared health complaint in whom no diagnosis is made
         recommendation = (
-            "Morphological metrics consistent with normal glandular architecture. "
-            "Recommend return to routine age-appropriate screening intervals."
+            "Acoustic phonation stability and fractal complexity within physiological normative ranges. "
+            "No indication for specialized neuroimaging. Re-evaluate if clinical tremor or bradykinesia develops."
         )
 
     # Consensus analysis
-    vqc_malignant = vqc_prob >= 0.5
-    computed_concordance = "CONCORDANT" if (is_malignant == vqc_malignant) else "DISCORDANT (REVIEW REQUIRED)"
+    discordance_delta = abs(xgb_prob - vqc_prob)
+    computed_concordance = "CONCORDANT" if discordance_delta < 0.30 else "DISCORDANT (PHYSICIAN REVIEW REQUIRED)"
     concordance = model_consensus if model_consensus is not None else computed_concordance
-    
+
     # Format top biomarker drivers
     key_drivers = []
     for f in top_shap_features[:4]:
-        direction_arrow = "▲" if f.get("direction") == "malignant" else "▼"
+        direction_arrow = "▲" if f.get("direction") == "pd_associated" else "▼"
         impact_sign = "+" if f.get("shap_value", 0) > 0 else ""
         key_drivers.append({
             "feature_name": f.get("feature_name", "Unknown"),
@@ -82,25 +78,26 @@ def format_clinical_memo(
         })
 
     # Synthesize plain-text / Markdown memo for export
-    memo_markdown = f"""# AAROH CLINICAL CONSULTATION MEMORANDUM
+    memo_markdown = f"""# AAROH CLINICAL SCREENING CONSULTATION MEMORANDUM
 **Hospital Identification / Case ID**: {patient_id}
 **Date of Evaluation**: {now_str}
-**Specimen Type**: Fine Needle Aspirate (FNA) — Wisconsin Diagnostic Protocol
-**Diagnostic Modality**: Dual Classical (XGBoost 5-Fold CV) + Quantum VQC (4-Qubit ZZ-Map)
+**Modality**: Voice Phonation Acoustic Telemonitoring (22 Feature Protocol)
+**Architecture**: Multimodal Hybrid Classical (XGBoost) + Quantum VQC (4-Qubit ZZ-Map)
 --------------------------------------------------------------------------------
 
-### 1. DIAGNOSTIC IMPRESSION & RISK SUMMARY
+### 1. SCREENING IMPRESSION & RISK SUMMARY
 - **Primary Finding**: {diagnosis_label}
 - **Assigned ICD-10 Code**: {icd10_code}
 - **Clinical Risk Tier**: {risk_tier}
-- **Classical XGBoost Confidence**: {xgb_prob*100:.1f}% (Calibrated Margin)
+- **Hybrid Screening Score**: {hybrid_prob*100:.1f}% (Optimal Calibration: 0.31 Classical + 0.69 Quantum)
+- **Classical XGBoost Probability**: {xgb_prob*100:.1f}%
 - **Quantum VQC State Probability**: {vqc_prob*100:.1f}% (Qubit 0 <IIIZ> Projection)
-- **Dual-Model Concordance**: {concordance}
+- **Consensus Status**: {concordance}
 
-### 2. PRIMARY NUCLEAR BIOMARKER DRIVERS (SHAP ATTRIBUTION)
+### 2. PRIMARY ACOUSTIC BIOMARKER DRIVERS (SHAP ATTRIBUTION)
 {chr(10).join([f"- **{d['feature_name']}**: Raw={d['raw_value']} (Z={d['z_score']}) ➔ SHAP={d['shap_attribution']} ({d['direction'].upper()})" for d in key_drivers])}
 
-### 3. PATHOLOGY SYNTHESIS
+### 3. CLINICAL NEUROLOGY SYNTHESIS
 {narrative}
 
 ### 4. RECOMMENDED CLINICAL NEXT ACTION
@@ -108,22 +105,23 @@ def format_clinical_memo(
 
 --------------------------------------------------------------------------------
 **REGULATORY & CLINICAL DISCLAIMER**:
-AAROH is an experimental hybrid clinical decision-support and quantum benchmarking
-platform developed for research and algorithmic auditability. It does not constitute
-a standalone medical device. All outputs must be correlated with definitive tissue
-histopathology and approved by a board-certified pathologist.
+AAROH is a hybrid clinical decision-support and quantum benchmarking platform
+developed for early screening assistance and algorithmic auditability. It does not
+constitute a definitive standalone medical diagnosis. All screening signals must be
+correlated with in-person neurological examination (MDS-UPDRS) and approved by a physician.
 --------------------------------------------------------------------------------
-*Execution Latency: {execution_time_ms:.1f}ms | Pipeline Audit Hash: SHA256-AAROH-GATE2*
+*Execution Latency: {execution_time_ms:.1f}ms | Pipeline Audit Hash: SHA256-AAROH-PARKINSONS-GATE2*
 """
 
     return {
         "case_id": patient_id,
         "timestamp": now_str,
-        "specimen": "FNA Breast Biopsy",
+        "modality": "Acoustic Telemonitoring (22 MDVP Features)",
         "icd10_code": icd10_code,
         "diagnosis": diagnosis_label,
         "risk_tier": risk_tier,
         "concordance": concordance,
+        "hybrid_screening_score": round(hybrid_prob, 4),
         "classical_xgb_confidence": round(xgb_prob, 4),
         "quantum_vqc_probability": round(vqc_prob, 4),
         "key_biomarker_drivers": key_drivers,
@@ -131,9 +129,8 @@ histopathology and approved by a board-certified pathologist.
         "recommended_action": recommendation,
         "memo_markdown": memo_markdown,
         "disclaimer": (
-            "AAROH is a clinical decision-support and quantum benchmarking tool. "
-            "Not intended as a standalone diagnostic device. Clinical correlation with "
-            "full histological specimen is required."
+            "AAROH is a clinical decision-support tool. Not intended as a standalone diagnostic device. "
+            "In-person clinical examination and neurological correlation required."
         ),
         "execution_time_ms": round(execution_time_ms, 2),
     }

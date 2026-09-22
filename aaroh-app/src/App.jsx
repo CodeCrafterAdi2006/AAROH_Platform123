@@ -1,162 +1,194 @@
-import React, { useState, useEffect, useRef } from 'react';
-import Header from './components/Header';
-import PatientInput from './components/PatientInput';
+import React, { useState, useEffect } from 'react';
+import Navbar from './components/Navbar';
+import VoiceModalityCard from './components/VoiceModalityCard';
+import MotorModalityCard from './components/MotorModalityCard';
+import ClinicalPhenotypeCard from './components/ClinicalPhenotypeCard';
+import QuantumEngineCard from './components/QuantumEngineCard';
 import AgentStream from './components/AgentStream';
-import ModelComparison from './components/ModelComparison';
-import ShapViewer from './components/ShapViewer';
+import ScreeningResult from './components/ScreeningResult';
+import ShapExplainability from './components/ShapExplainability';
+import LongitudinalHistory from './components/LongitudinalHistory';
 import ClinicalMemo from './components/ClinicalMemo';
 import MetricsModal from './components/MetricsModal';
-import { Activity, AlertCircle, FileText, Sparkles, CheckCircle2, ChevronRight } from 'lucide-react';
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE_URL = 'http://127.0.0.1:8000';
 
-// Fallback presets if backend is still starting up
 const DEFAULT_PRESETS = [
   {
-    preset_id: 'case_malignant',
-    patient_id: 'WBCD-MAL-842302',
-    label: 'Malignant Carcinoma Reference',
-    ground_truth: 'Malignant',
-    description: 'Marked nuclear atypia, irregular margins, elevated perimeter and area.',
-    features: [17.99, 10.38, 122.8, 1001.0, 0.1184, 0.2776, 0.3001, 0.1471, 0.2419, 0.07871, 1.095, 0.9053, 8.589, 153.4, 0.006399, 0.04904, 0.05373, 0.01587, 0.03003, 0.006193, 25.38, 17.33, 184.6, 2019.0, 0.1622, 0.6656, 0.7119, 0.2654, 0.4601, 0.1189],
+    preset_id: 'case_high_pd',
+    patient_id: 'P-001',
+    label: "Elevated Parkinson's Phonation (High Risk)",
+    ground_truth: "Parkinson's Disease",
+    description: "Marked vocal jitter, elevated PPE, and reduced HNR indicating advanced cycle-to-cycle frequency instability.",
+    features: [119.992, 157.302, 74.997, 0.00784, 0.00007, 0.00370, 0.00554, 0.01109, 0.04374, 0.426, 0.02182, 0.03130, 0.02971, 0.06545, 0.02211, 21.033, 0.414783, 0.815285, -4.813031, 0.266482, 2.301442, 0.284654],
+    clinical_metadata: { age: 68, sex: 'Male', moca: 23, tremor_freq_hz: 5.4, symptom_months: 24 }
   },
   {
-    preset_id: 'case_benign',
-    patient_id: 'WBCD-BEN-8510426',
-    label: 'Benign Fibroadenoma Reference',
-    ground_truth: 'Benign',
-    description: 'Uniform nuclear contours, regular perimeter, non-atypical cytology.',
-    features: [13.54, 14.36, 87.46, 566.3, 0.09779, 0.08129, 0.06664, 0.04781, 0.1885, 0.05766, 0.2699, 0.7886, 2.058, 23.56, 0.008462, 0.0146, 0.02387, 0.01315, 0.0198, 0.0023, 15.11, 19.26, 99.7, 711.2, 0.144, 0.1773, 0.239, 0.1288, 0.2977, 0.07259],
+    preset_id: 'case_moderate_pd',
+    patient_id: 'P-002',
+    label: "Moderate / Borderline Microperturbation",
+    ground_truth: "Parkinson's Disease",
+    description: "Intermediate acoustic features near clinical boundary with subtle tremor characteristics.",
+    features: [197.076, 206.896, 192.055, 0.00289, 0.00001, 0.00166, 0.00168, 0.00498, 0.01098, 0.097, 0.00563, 0.00680, 0.00802, 0.01689, 0.00339, 26.775, 0.422229, 0.741367, -7.348300, 0.177551, 1.743867, 0.085569],
+    clinical_metadata: { age: 62, sex: 'Female', moca: 26, tremor_freq_hz: 4.8, symptom_months: 12 }
   },
   {
-    preset_id: 'case_borderline',
-    patient_id: 'WBCD-BRD-CASE19',
-    label: 'Intermediate / Borderline Case',
-    ground_truth: 'Benign',
-    description: 'Intermediate morphometry presenting diagnostic challenge for single-modality triage.',
-    features: [14.05, 27.15, 91.38, 600.4, 0.09929, 0.1126, 0.04462, 0.04304, 0.1537, 0.06171, 0.3645, 1.492, 2.888, 29.84, 0.007256, 0.02678, 0.02071, 0.01626, 0.0208, 0.005304, 15.3, 33.17, 100.2, 706.7, 0.1241, 0.2264, 0.1326, 0.1048, 0.225, 0.09424],
+    preset_id: 'case_therapy_response',
+    patient_id: 'P-003',
+    label: "Post-Therapy Improvement (Longitudinal)",
+    ground_truth: "Parkinson's Disease (On Medication)",
+    description: "Phonation metrics demonstrating stabilization post-Levodopa administration over repeated visits.",
+    features: [152.845, 163.305, 75.836, 0.00294, 0.00002, 0.00121, 0.00149, 0.00364, 0.01828, 0.158, 0.01064, 0.00972, 0.01591, 0.03191, 0.00609, 24.922, 0.474791, 0.654027, -6.105098, 0.203502, 2.198672, 0.152481],
+    clinical_metadata: { age: 71, sex: 'Male', moca: 25, tremor_freq_hz: 3.9, symptom_months: 36 }
+  },
+  {
+    preset_id: 'case_healthy_control',
+    patient_id: 'P-004',
+    label: "Healthy Control Baseline (Normative)",
+    ground_truth: "Healthy Control",
+    description: "High harmonicity (HNR > 25 dB), low jitter/shimmer, regular fundamental frequency periodicity.",
+    features: [241.409, 260.655, 237.261, 0.00174, 0.000007, 0.00086, 0.00115, 0.00258, 0.01170, 0.106, 0.00580, 0.00685, 0.00987, 0.01739, 0.00454, 28.184, 0.384377, 0.658721, -7.026421, 0.181812, 1.397577, 0.105872],
+    clinical_metadata: { age: 59, sex: 'Female', moca: 29, tremor_freq_hz: 0.0, symptom_months: 0 }
   }
 ];
 
-const DEFAULT_FEATURE_NAMES = [
-  "mean radius", "mean texture", "mean perimeter", "mean area", "mean smoothness",
-  "mean compactness", "mean concavity", "mean concave points", "mean symmetry", "mean fractal dimension",
-  "radius error", "texture error", "perimeter error", "area error", "smoothness error",
-  "compactness error", "concavity error", "concave points error", "symmetry error", "fractal dimension error",
-  "worst radius", "worst texture", "worst perimeter", "worst area", "worst smoothness",
-  "worst compactness", "worst concavity", "worst concave points", "worst symmetry", "worst fractal dimension"
-];
-
 export default function App() {
-  // Backend & Metadata state
-  const [backendOnline, setBackendOnline] = useState(false);
-  const [healthData, setHealthData] = useState(null);
-  const [benchmarks, setBenchmarks] = useState(null);
-  const [globalImportance, setGlobalImportance] = useState(null);
+  const [activeTab, setActiveTab] = useState('screening'); // 'screening', 'history', 'memo'
+  const [isMetricsModalOpen, setIsMetricsModalOpen] = useState(false);
+  const [backendStatus, setBackendStatus] = useState('offline');
 
-  // Patient Case state
+  // Clinical Patient State
   const [presets, setPresets] = useState(DEFAULT_PRESETS);
-  const [selectedPresetId, setSelectedPresetId] = useState('case_malignant');
-  const [patientFeatures, setPatientFeatures] = useState(DEFAULT_PRESETS[0].features);
-  const [featureNames, setFeatureNames] = useState(DEFAULT_FEATURE_NAMES);
-  const [forceFallback, setForceFallback] = useState(false);
+  const [selectedPresetId, setSelectedPresetId] = useState('case_high_pd');
+  const [patientId, setPatientId] = useState('P-001');
+  const [features, setFeatures] = useState(DEFAULT_PRESETS[0].features);
+  const [featureNames, setFeatureNames] = useState([]);
+  const [clinicalMetadata, setClinicalMetadata] = useState(DEFAULT_PRESETS[0].clinical_metadata);
 
-  // Streaming & Pipeline state
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamEvents, setStreamEvents] = useState([]);
-  const [currentStage, setCurrentStage] = useState(null);
-  const [streamCompleted, setStreamCompleted] = useState(false);
-  const [diagnosticResult, setDiagnosticResult] = useState(null);
+  // Screening Execution & SSE State
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [completedStages, setCompletedStages] = useState([]);
+  const [activeStage, setActiveStage] = useState(null);
+  const [resultData, setResultData] = useState(null);
 
-  // Modals state
-  const [isMetricsOpen, setIsMetricsOpen] = useState(false);
-  const [isMemoOpen, setIsMemoOpen] = useState(false);
+  // Benchmarking & Global Data
+  const [metricsData, setMetricsData] = useState(null);
+  const [globalImportance, setGlobalImportance] = useState([]);
+  const [historyRecords, setHistoryRecords] = useState([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
-  const abortControllerRef = useRef(null);
-
-  // 1. Initial Load: Ping backend health, fetch reference presets & benchmarks
+  // 1. Initial Data Fetch (Health, Presets, Metrics, Global Importance)
   useEffect(() => {
-    const checkBackend = async () => {
+    async function initPlatform() {
       try {
-        const hRes = await fetch(`${API_BASE}/api/health`);
-        if (hRes.ok) {
-          const hData = await hRes.json();
-          setBackendOnline(true);
-          setHealthData(hData);
-        }
+        // Health check
+        const healthRes = await fetch(`${API_BASE_URL}/api/health`);
+        if (healthRes.ok) setBackendStatus('online');
 
-        const ptsRes = await fetch(`${API_BASE}/api/reference-patients`);
-        if (ptsRes.ok) {
-          const ptsData = await ptsRes.json();
-          if (ptsData.patients?.length > 0) {
-            setPresets(ptsData.patients);
-            setFeatureNames(ptsData.feature_names || DEFAULT_FEATURE_NAMES);
-            setPatientFeatures(ptsData.patients[0].features);
+        // Demo Patients
+        const presetsRes = await fetch(`${API_BASE_URL}/api/demo-patients`);
+        if (presetsRes.ok) {
+          const pData = await presetsRes.json();
+          setPresets(pData.patients || []);
+          setFeatureNames(pData.feature_names || []);
+          if (pData.patients && pData.patients.length > 0) {
+            const firstPreset = pData.patients[0];
+            setSelectedPresetId(firstPreset.preset_id);
+            setPatientId(firstPreset.patient_id);
+            setFeatures(firstPreset.features);
+            if (firstPreset.clinical_metadata) {
+              setClinicalMetadata(firstPreset.clinical_metadata);
+            }
           }
         }
 
-        const mRes = await fetch(`${API_BASE}/api/metrics`);
-        if (mRes.ok) {
-          const mData = await mRes.json();
-          setBenchmarks(mData);
+        // Metrics
+        const metricsRes = await fetch(`${API_BASE_URL}/api/metrics`);
+        if (metricsRes.ok) {
+          setMetricsData(await metricsRes.json());
         }
 
-        const giRes = await fetch(`${API_BASE}/api/global-importance`);
+        // Global Importance
+        const giRes = await fetch(`${API_BASE_URL}/api/global-importance`);
         if (giRes.ok) {
           const giData = await giRes.json();
-          setGlobalImportance(giData);
+          setGlobalImportance(giData.all_rankings || giData.top_10_biomarkers || []);
         }
       } catch (err) {
-        console.warn("FastAPI backend is offline or unreachable:", err.message);
-        setBackendOnline(false);
+        console.warn('Initial backend fetch error (Backend may still be starting):', err);
       }
-    };
-
-    checkBackend();
-    const interval = setInterval(checkBackend, 8000);
-    return () => clearInterval(interval);
+    }
+    initPlatform();
   }, []);
 
-  // 2. Preset Selection Handler
+  // 2. Fetch History on Patient ID change
+  useEffect(() => {
+    async function fetchHistory() {
+      if (!patientId) return;
+      setIsHistoryLoading(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/patient/${patientId}/history`);
+        if (res.ok) {
+          const data = await res.json();
+          setHistoryRecords(data.history || []);
+        }
+      } catch (err) {
+        console.error('Failed to load history:', err);
+      } finally {
+        setIsHistoryLoading(false);
+      }
+    }
+    fetchHistory();
+  }, [patientId]);
+
+  // Handle Preset Selection
   const handleSelectPreset = (presetId) => {
     setSelectedPresetId(presetId);
-    const p = presets.find(item => item.preset_id === presetId);
-    if (p) {
-      setPatientFeatures(p.features);
+    const found = presets.find((p) => p.preset_id === presetId);
+    if (found) {
+      setPatientId(found.patient_id);
+      setFeatures([...found.features]);
+      if (found.clinical_metadata) {
+        setClinicalMetadata({ ...found.clinical_metadata });
+      }
+      setResultData(null);
+      setCompletedStages([]);
+      setActiveStage(null);
     }
   };
 
-  // 3. SSE Stream Reader
-  const handleRunDiagnosis = async () => {
-    if (isStreaming) return;
+  // Handle Individual Feature Adjustment
+  const handleFeatureChange = (index, value) => {
+    const updated = [...features];
+    updated[index] = value;
+    setFeatures(updated);
+  };
 
-    setIsStreaming(true);
-    setStreamCompleted(false);
-    setStreamEvents([]);
-    setCurrentStage('data_ingestion');
-    setDiagnosticResult(null);
+  // Handle Tremor Adjustment
+  const handleTremorChange = (val) => {
+    setClinicalMetadata((prev) => ({ ...prev, tremor_freq_hz: val }));
+  };
 
-    const activePreset = presets.find(p => p.preset_id === selectedPresetId) || presets[0];
+  // 3. Live SSE Streaming Execution
+  const handleRunAnalysis = async () => {
+    if (isAnalyzing) return;
+    setIsAnalyzing(true);
+    setCompletedStages([]);
+    setActiveStage('data_ingestion');
+    setResultData(null);
 
     try {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      abortControllerRef.current = new AbortController();
-
-      const response = await fetch(`${API_BASE}/api/predict/stream`, {
+      const response = await fetch(`${API_BASE_URL}/api/screen/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          patient_id: activePreset.patient_id,
-          features: patientFeatures,
-          force_fallback: forceFallback,
+          patient_id: patientId,
+          features: features,
         }),
-        signal: abortControllerRef.current.signal,
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP Error ${response.status}: ${response.statusText}`);
+        throw new Error(`Screening request failed with status: ${response.status}`);
       }
 
       const reader = response.body.getReader();
@@ -169,199 +201,214 @@ export default function App() {
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n\n');
-        buffer = lines.pop(); // Keep unfinished chunk in buffer
+        buffer = lines.pop(); // Keep incomplete fragment
 
-        for (const chunk of lines) {
-          if (!chunk.trim()) continue;
+        for (const block of lines) {
+          if (!block.trim()) continue;
 
           let eventType = 'message';
-          let dataStr = '';
+          let jsonData = null;
 
-          const chunkLines = chunk.split('\n');
-          for (const line of chunkLines) {
+          for (const line of block.split('\n')) {
             if (line.startsWith('event:')) {
               eventType = line.replace('event:', '').trim();
             } else if (line.startsWith('data:')) {
-              dataStr += line.replace('data:', '').trim();
-            }
-          }
-
-          if (dataStr) {
-            try {
-              const parsedData = JSON.parse(dataStr);
-              setStreamEvents(prev => [...prev, { type: eventType, data: parsedData }]);
-
-              if (eventType === 'stage_start') {
-                setCurrentStage(parsedData.stage);
-              } else if (eventType === 'final_result') {
-                setDiagnosticResult(parsedData);
-                setStreamCompleted(true);
+              try {
+                jsonData = JSON.parse(line.replace('data:', '').trim());
+              } catch (e) {
+                console.error('Failed to parse SSE data block:', line);
               }
-            } catch (e) {
-              console.warn("Failed to parse SSE JSON data chunk:", dataStr);
             }
           }
-        }
-      }
 
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        console.log('Diagnosis request aborted.');
-      } else {
-        console.error("Streaming error, falling back to synchronous predict:", err);
-        // Attempt fallback synchronous request
-        try {
-          const syncRes = await fetch(`${API_BASE}/api/predict`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              patient_id: activePreset.patient_id,
-              features: patientFeatures,
-              force_fallback: forceFallback,
-            }),
-          });
-          if (syncRes.ok) {
-            const syncData = await syncRes.json();
-            setDiagnosticResult(syncData);
-            setStreamCompleted(true);
+          if (eventType === 'stage_start' && jsonData) {
+            setActiveStage(jsonData.stage);
+          } else if (eventType === 'stage_complete' && jsonData) {
+            setCompletedStages((prev) => [...prev, jsonData]);
+          } else if (eventType === 'final_result' && jsonData) {
+            setResultData(jsonData);
+            setActiveStage(null);
           }
-        } catch (syncErr) {
-          alert(`Could not connect to backend at ${API_BASE}. Make sure the FastAPI service is running.`);
         }
       }
+    } catch (err) {
+      console.error('Screening pipeline execution error:', err);
     } finally {
-      setIsStreaming(false);
+      setIsAnalyzing(false);
     }
   };
 
+  // Save current assessment to SQLite
+  const handleSaveAssessment = async () => {
+    if (!resultData) return;
+    const fusion = resultData.fusion || {};
+    const memo = resultData.memo || {};
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/patient/${patientId}/save-assessment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient_id: patientId,
+          classical_score: fusion.classical_probability || 0.0,
+          quantum_score: fusion.quantum_probability || 0.0,
+          hybrid_score: fusion.hybrid_probability || 0.0,
+          risk_tier: memo.risk_tier || 'MODERATE',
+          consensus_status: fusion.consensus_status || 'CONCORDANT',
+          feature_json: JSON.stringify(features),
+          shap_json: JSON.stringify(resultData.classical?.top_features || []),
+          clinical_memo_json: JSON.stringify(memo),
+        }),
+      });
+
+      if (res.ok) {
+        // Refresh history
+        const hRes = await fetch(`${API_BASE_URL}/api/patient/${patientId}/history`);
+        if (hRes.ok) {
+          const hData = await hRes.json();
+          setHistoryRecords(hData.history || []);
+        }
+        alert(`Assessment for patient ${patientId} saved to database!`);
+      }
+    } catch (e) {
+      console.error('Error saving assessment:', e);
+    }
+  };
+
+  const quantumTelemetry = resultData?.quantum || {
+    quantum_angles_rad: [1.42, 0.85, 2.15, 0.64],
+    expectation_value: -0.1238,
+    backend: 'Qiskit Aer / Statevector',
+    latency_ms: 9.8,
+  };
+
   return (
-    <div className="min-h-screen bg-dark-bg text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div className="min-h-screen bg-slate-50 text-slate-900 pb-12">
       
-      {/* Top Clinical Header */}
-      <Header 
-        backendOnline={backendOnline}
-        healthData={healthData}
-        onOpenMetrics={() => setIsMetricsOpen(true)}
-        onOpenMemo={() => setIsMemoOpen(true)}
-        hasDiagnostic={!!diagnosticResult}
+      {/* Navbar */}
+      <Navbar
+        selectedPresetId={selectedPresetId}
+        presets={presets}
+        onSelectPreset={handleSelectPreset}
+        onRunAnalysis={handleRunAnalysis}
+        isAnalyzing={isAnalyzing}
+        onOpenMetrics={() => setIsMetricsModalOpen(true)}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        backendStatus={backendStatus}
       />
 
-      {/* Main Clinical Dashboard Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 space-y-6">
+      {/* Main Content Area */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
         
-        {/* Offline Warning Banner if backend not reached */}
-        {!backendOnline && (
-          <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-800/60 text-amber-200 text-xs flex items-center justify-between gap-3 animate-in fade-in duration-200">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
-              <span>
-                Backend server is connecting at <code className="font-mono bg-amber-950 px-1.5 py-0.5 rounded text-amber-300">{API_BASE}</code>. Make sure to run <code className="font-mono bg-amber-950 px-1.5 py-0.5 rounded text-amber-300">python backend/main.py</code>.
-              </span>
+        {/* Tab 1: Screening & Telemetry */}
+        {activeTab === 'screening' && (
+          <div className="space-y-6">
+            
+            {/* Top Grid: 3 Multimodal Modality Cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+              
+              {/* Voice Acoustic Card */}
+              <VoiceModalityCard
+                features={features}
+                featureNames={featureNames}
+                onFeatureChange={handleFeatureChange}
+                patientId={patientId}
+              />
+
+              {/* Motor Kinematics Card */}
+              <MotorModalityCard
+                tremorFreqHz={clinicalMetadata.tremor_freq_hz || 5.2}
+                bradykinesiaScore={2}
+                posturalScore={1}
+                onTremorChange={handleTremorChange}
+              />
+
+              {/* Clinical Phenotype Card */}
+              <ClinicalPhenotypeCard
+                patientId={patientId}
+                presets={presets}
+                selectedPresetId={selectedPresetId}
+                onSelectPreset={handleSelectPreset}
+                clinicalMetadata={clinicalMetadata}
+                onMetadataChange={setClinicalMetadata}
+              />
+
             </div>
-            <span className="text-[11px] font-mono text-amber-400">STATUS: RETRYING</span>
+
+            {/* Middle Grid: Quantum Telemetry Engine + Live SSE Agent Stream */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              
+              {/* 4-Qubit Quantum Engine Card */}
+              <QuantumEngineCard
+                quantumTelemetry={quantumTelemetry}
+                classicalScore={resultData?.fusion?.classical_probability ?? 0.0}
+                quantumScore={resultData?.fusion?.quantum_probability ?? 0.0}
+                hybridScore={resultData?.fusion?.hybrid_probability ?? 0.0}
+                alpha={resultData?.fusion?.alpha_weight ?? 0.31}
+                beta={resultData?.fusion?.beta_weight ?? 0.69}
+                consensusStatus={resultData?.fusion?.consensus_status ?? "CONCORDANT"}
+                isAnalyzing={isAnalyzing}
+              />
+
+              {/* 6-Stage Deterministic Agent Pipeline Stream */}
+              <AgentStream
+                stages={completedStages}
+                activeStage={activeStage}
+                isStreaming={isAnalyzing}
+              />
+
+            </div>
+
+            {/* Bottom Grid: Screening Assessment Result + TreeSHAP Explainability */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              
+              {/* Screening Result Outcome */}
+              <ScreeningResult
+                resultData={resultData}
+                isAnalyzing={isAnalyzing}
+                onViewMemo={() => setActiveTab('memo')}
+                onSaveAssessment={handleSaveAssessment}
+              />
+
+              {/* TreeSHAP Explainability */}
+              <ShapExplainability
+                shapData={resultData?.classical}
+                globalImportance={globalImportance}
+              />
+
+            </div>
+
           </div>
         )}
 
-        {/* 1. Patient Ingestion & Preset Selector */}
-        <PatientInput 
-          presets={presets}
-          selectedPresetId={selectedPresetId}
-          onSelectPreset={handleSelectPreset}
-          patientFeatures={patientFeatures}
-          featureNames={featureNames}
-          isStreaming={isStreaming}
-          onRunDiagnosis={handleRunDiagnosis}
-          forceFallback={forceFallback}
-          setForceFallback={setForceFallback}
-        />
-
-        {/* 2. Deterministic Agentic Stream Telemetry */}
-        <AgentStream 
-          streamEvents={streamEvents}
-          currentStage={currentStage}
-          isStreaming={isStreaming}
-          streamCompleted={streamCompleted}
-          totalLatencyMs={diagnosticResult?.total_latency_ms || 0}
-        />
-
-        {/* 3. Dual-Model Benchmarking & Inference Panel */}
-        {diagnosticResult && (
-          <div className="space-y-6 animate-in fade-in duration-300">
-            
-            {/* Quick Action Ribbon */}
-            <div className="p-4 rounded-xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${
-                  diagnosticResult.memo?.diagnosis?.includes('MALIGNANT')
-                    ? 'bg-rose-500/20 text-rose-400'
-                    : 'bg-emerald-500/20 text-emerald-400'
-                }`}>
-                  <Activity className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-white">
-                      Diagnostic Consensus: {diagnosticResult.memo?.diagnosis}
-                    </span>
-                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-950 text-cyan-300 border border-slate-700">
-                      ICD-10: {diagnosticResult.memo?.icd10_code}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    {diagnosticResult.memo?.concordance} across XGBoost & 4-Qubit VQC models.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setIsMemoOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-md shadow-cyan-600/20 transition-all active:scale-95 whitespace-nowrap"
-              >
-                <FileText className="w-4 h-4" />
-                <span>Open Pathology Memo & Print</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Side-by-Side Model Comparison (Classical vs Quantum) */}
-            <ModelComparison 
-              classicalResult={diagnosticResult.classical}
-              quantumResult={diagnosticResult.quantum}
-              memoData={diagnosticResult.memo}
-              benchmarks={benchmarks}
+        {/* Tab 2: Longitudinal Disease Monitoring & History */}
+        {activeTab === 'history' && (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <LongitudinalHistory
+              patientId={patientId}
+              historyRecords={historyRecords}
+              isLoading={isHistoryLoading}
             />
+          </div>
+        )}
 
-            {/* Interactive TreeSHAP Attribution Force Chart */}
-            <ShapViewer 
-              classicalResult={diagnosticResult.classical}
+        {/* Tab 3: Formal Consultation Memo */}
+        {activeTab === 'memo' && (
+          <div className="max-w-4xl mx-auto space-y-6">
+            <ClinicalMemo
+              memoData={resultData?.memo}
+              onBack={() => setActiveTab('screening')}
             />
-
           </div>
         )}
 
       </main>
 
-      {/* Footer */}
-      <footer className="no-print border-t border-slate-800/80 py-6 px-4 text-center text-xs text-slate-500 font-mono">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>AAROH v2.0 — Deterministic Multi-Agent Hybrid Clinical Decision Support</span>
-          <span>Wisconsin Breast Cancer Diagnostic (WBCD) | 569 Cases | 30 Morphometry Features</span>
-        </div>
-      </footer>
-
-      {/* Pathology Consultation Memorandum Modal (Supports Print/PDF Export) */}
-      <ClinicalMemo 
-        memoData={diagnosticResult?.memo}
-        isOpen={isMemoOpen}
-        onClose={() => setIsMemoOpen(false)}
-      />
-
-      {/* Scientific Benchmarks & Methodology Modal */}
-      <MetricsModal 
-        isOpen={isMetricsOpen}
-        onClose={() => setIsMetricsOpen(false)}
-        metricsData={benchmarks}
-        globalImportance={globalImportance}
+      {/* Multi-Model Benchmark Comparison Modal */}
+      <MetricsModal
+        isOpen={isMetricsModalOpen}
+        onClose={() => setIsMetricsModalOpen(false)}
+        metricsData={metricsData}
       />
 
     </div>

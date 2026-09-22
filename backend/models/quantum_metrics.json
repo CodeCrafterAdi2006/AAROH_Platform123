@@ -1,5 +1,6 @@
 {
   "model": "Variational Quantum Classifier (VQC)",
+  "dataset": "UCI Parkinson's Voice Telemonitoring Dataset",
   "framework": "Qiskit 2.5.2 (Aer/Statevector)",
   "circuit_specification": {
     "num_qubits": 4,
@@ -9,228 +10,234 @@
     "observable": "Pauli-Z on Qubit 0 (IIIZ)",
     "encoding_range": "[0, pi]",
     "pca_components": 4,
-    "pca_variance_explained": 0.7948561198812998
+    "pca_variance_explained": 0.8508762642238126,
+    "pca_variance_ratios": [
+      0.6182600405126005,
+      0.10016423007700277,
+      0.07115804065797182,
+      0.061293952976237465
+    ]
   },
   "training_details": {
     "optimizer": "COBYLA",
     "maxiter": 50,
     "total_evaluations": 50,
-    "training_duration_seconds": 46.34,
-    "final_loss": 0.6193756770125991,
+    "training_duration_seconds": 22.33,
+    "final_loss": 0.6314246934214598,
     "loss_history": [
       {
         "iteration": 1,
-        "loss": 0.7131674412463066
+        "loss": 0.6734114219350317
       },
       {
         "iteration": 2,
-        "loss": 0.7354247273213053
+        "loss": 0.6816290648120386
       },
       {
         "iteration": 3,
-        "loss": 0.6905252838709325
+        "loss": 0.6965762789569583
       },
       {
         "iteration": 4,
-        "loss": 0.6706347222254068
+        "loss": 0.6888907372729869
       },
       {
         "iteration": 5,
-        "loss": 0.6871165308608708
+        "loss": 0.6998480552732781
       },
       {
         "iteration": 6,
-        "loss": 0.7538798918450099
+        "loss": 0.7553480579259765
       },
       {
         "iteration": 7,
-        "loss": 0.6706347222254068
+        "loss": 0.6734114219350317
       },
       {
         "iteration": 8,
-        "loss": 0.6706347222254068
+        "loss": 0.6734114219350317
       },
       {
         "iteration": 9,
-        "loss": 0.6706347222254068
+        "loss": 0.6734114219350317
       },
       {
         "iteration": 10,
-        "loss": 0.6407048418367537
+        "loss": 0.6369440371746197
       },
       {
         "iteration": 11,
-        "loss": 0.7286604337452652
+        "loss": 0.6519808528840095
       },
       {
         "iteration": 12,
-        "loss": 0.6817159912111461
+        "loss": 0.6485378001930249
       },
       {
         "iteration": 13,
-        "loss": 0.6255002677895676
+        "loss": 0.6377831012815196
       },
       {
         "iteration": 14,
-        "loss": 0.6229649934009173
+        "loss": 0.634517860211876
       },
       {
         "iteration": 15,
-        "loss": 0.6257034783856217
+        "loss": 0.6349794614510882
       },
       {
         "iteration": 16,
-        "loss": 0.6230435731382286
+        "loss": 0.6350893665886062
       },
       {
         "iteration": 17,
-        "loss": 0.6210932455042333
+        "loss": 0.6345125623377433
       },
       {
         "iteration": 18,
-        "loss": 0.6208458066152495
+        "loss": 0.6338077678310443
       },
       {
         "iteration": 19,
-        "loss": 0.6208021666154594
+        "loss": 0.6338556475793559
       },
       {
         "iteration": 20,
-        "loss": 0.6208884144908212
+        "loss": 0.6338077678310444
       },
       {
         "iteration": 21,
-        "loss": 0.6210761723031782
+        "loss": 0.6343361183593839
       },
       {
         "iteration": 22,
-        "loss": 0.6202297721696716
+        "loss": 0.6337770556993879
       },
       {
         "iteration": 23,
-        "loss": 0.6203264885586445
+        "loss": 0.6335082639373147
       },
       {
         "iteration": 24,
-        "loss": 0.6208346132910073
+        "loss": 0.6333086231217068
       },
       {
         "iteration": 25,
-        "loss": 0.6200228253463987
+        "loss": 0.6335349811064708
       },
       {
         "iteration": 26,
-        "loss": 0.6195963370329579
+        "loss": 0.6341118189340476
       },
       {
         "iteration": 27,
-        "loss": 0.6195930293280607
+        "loss": 0.6327259289905642
       },
       {
         "iteration": 28,
-        "loss": 0.6197887958218715
+        "loss": 0.6327768023625661
       },
       {
         "iteration": 29,
-        "loss": 0.6195604478805125
+        "loss": 0.6333493087593364
       },
       {
         "iteration": 30,
-        "loss": 0.6195549764567725
+        "loss": 0.6320386779035551
       },
       {
         "iteration": 31,
-        "loss": 0.620120792056842
+        "loss": 0.6319164301405892
       },
       {
         "iteration": 32,
-        "loss": 0.6195088710292853
+        "loss": 0.6318797666272421
       },
       {
         "iteration": 33,
-        "loss": 0.6197888276403976
+        "loss": 0.6324907440943947
       },
       {
         "iteration": 34,
-        "loss": 0.619923775888812
+        "loss": 0.6320175175316572
       },
       {
         "iteration": 35,
-        "loss": 0.6195813058995767
+        "loss": 0.632373182222821
       },
       {
         "iteration": 36,
-        "loss": 0.6196209422188244
+        "loss": 0.6321192628302126
       },
       {
         "iteration": 37,
-        "loss": 0.6198760122692297
+        "loss": 0.631490783955645
       },
       {
         "iteration": 38,
-        "loss": 0.619527592242241
+        "loss": 0.6315361495978559
       },
       {
         "iteration": 39,
-        "loss": 0.6194838327939237
+        "loss": 0.6315070358894991
       },
       {
         "iteration": 40,
-        "loss": 0.6196023001320103
+        "loss": 0.6315891008063538
       },
       {
         "iteration": 41,
-        "loss": 0.61948795219742
+        "loss": 0.6315516591457991
       },
       {
         "iteration": 42,
-        "loss": 0.6194621335188678
+        "loss": 0.6314928619089366
       },
       {
         "iteration": 43,
-        "loss": 0.6194643391232808
+        "loss": 0.6316123220079386
       },
       {
         "iteration": 44,
-        "loss": 0.619464950422336
+        "loss": 0.6314857325108166
       },
       {
         "iteration": 45,
-        "loss": 0.6194570382053916
+        "loss": 0.6314714959187234
       },
       {
         "iteration": 46,
-        "loss": 0.6194558578904675
+        "loss": 0.6314580289111189
       },
       {
         "iteration": 47,
-        "loss": 0.619471110362693
+        "loss": 0.6314696307294051
       },
       {
         "iteration": 48,
-        "loss": 0.6194814307212867
+        "loss": 0.6314527440651108
       },
       {
         "iteration": 49,
-        "loss": 0.6194064918005685
+        "loss": 0.6314313807631504
       },
       {
         "iteration": 50,
-        "loss": 0.6193756770125991
+        "loss": 0.6314246934214598
       }
     ]
   },
   "evaluation_protocol": {
     "method": "Single Held-Out Stratified 80/20 Split",
-    "sample_size": 114,
+    "sample_size": 39,
     "random_state": 42,
-    "honest_methodology_note": "Evaluated on a single 80/20 test split (n=114, seed=42). Classical XGBoost is validated via 5-Fold Stratified Cross-Validation. Direct comparison carries methodology asymmetry and should be viewed directionally."
+    "honest_methodology_note": "Evaluated on a single 80/20 test split (n=39, seed=42). Classical XGBoost is validated via 5-Fold Stratified Cross-Validation (n=195). Direct comparison carries methodology asymmetry and is presented transparently."
   },
   "metrics": {
-    "roc_auc": 0.748,
-    "accuracy": 0.6842,
-    "sensitivity": 0.6905,
-    "precision": 0.5577,
-    "f1": 0.617
+    "roc_auc": 0.6966,
+    "accuracy": 0.5128,
+    "sensitivity": 0.4483,
+    "precision": 0.8125,
+    "f1": 0.5778
   }
 }

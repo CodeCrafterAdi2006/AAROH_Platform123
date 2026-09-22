@@ -26,6 +26,13 @@ yarn-error.log*
 .env.local
 .env.*.local
 
+# Databases & Local Artifacts
+*.db
+*.sqlite3
+*.db-journal
+extracted_ppt_assets/
+sih_format_extracted.txt
+
 # IDE & OS
 .vscode/
 .idea/

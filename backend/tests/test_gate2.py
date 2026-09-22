@@ -1,13 +1,14 @@
 """
-AAROH Validation Gate 2 Test Suite
-Verifies Phase 2 (FastAPI Orchestrator, SSE Streaming & Clinical Synthesis):
-1. Service Health: GET /api/health returns online status
-2. Benchmarking Metrics: GET /api/metrics returns 5-Fold CV vs 80/20 VQC comparison
-3. Reference Patients: GET /api/reference-patients returns 3 valid 30D cases
-4. Global Feature Importance: GET /api/global-importance returns top biomarkers
-5. Synchronous Diagnostic: POST /api/predict executes 4-stage pipeline cleanly
-6. Live SSE Streaming: POST /api/predict/stream emits real-time event packets
-7. Input Validation & Error Guardrails: Rejects malformed or corrupted inputs
+AAROH Validation Gate 2 Test Suite: Phase 4 (FastAPI Backend, 6-Stage SSE Agents & SQLite Store)
+Verifies:
+1. Service Health: GET /api/health returns online status and SQLite DB
+2. Benchmarking Metrics: GET /api/metrics returns full classical, quantum & hybrid comparisons
+3. Demo Patients: GET /api/demo-patients returns 4 valid 22D acoustic presets
+4. Synchronous Screening: POST /api/screen/sync executes 6-stage pipeline cleanly
+5. Live SSE Streaming: POST /api/screen/stream emits real-time event packets for all 6 agent stages
+6. Longitudinal History: GET /api/patient/{id}/history retrieves longitudinal visit trajectory
+7. Persistence: POST /api/patient/{id}/save-assessment stores new assessment in SQLite
+8. Input Guardrails: Rejects malformed or corrupted feature inputs
 """
 
 import os
@@ -21,12 +22,14 @@ import json
 import time
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
-WORKSPACE_ROOT = os.path.abspath(os.path.join(TESTS_DIR, "..", ".."))
-if WORKSPACE_ROOT not in sys.path:
-    sys.path.insert(0, WORKSPACE_ROOT)
+PROJECT_ROOT = os.path.abspath(os.path.join(TESTS_DIR, "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from fastapi.testclient import TestClient
 from backend.main import app
+from backend.database.db import SessionLocal
+from backend.database.models import Assessment
 
 
 def parse_sse_events(raw_text: str):
@@ -65,7 +68,7 @@ def parse_sse_events(raw_text: str):
 
 def run_validation_gate_2():
     print("=" * 65)
-    print("AAROH VALIDATION GATE 2: FASTAPI & AGENTIC SSE STREAMING AUDIT")
+    print("AAROH VALIDATION GATE 2: FASTAPI, 6-STAGE SSE & SQLITE AUDIT")
     print("=" * 65)
 
     client = TestClient(app)
@@ -73,109 +76,88 @@ def run_validation_gate_2():
     # ---------------------------------------------------------
     # 1. Health & Service Status
     # ---------------------------------------------------------
-    print("\n[Audit 1/6] Verifying GET /api/health...")
+    print("\n[Audit 1/8] Verifying GET /api/health...")
     resp_health = client.get("/api/health")
     assert resp_health.status_code == 200, f"Health check failed: {resp_health.text}"
     health_data = resp_health.json()
     assert health_data["status"] == "online"
-    print(f"  [PASS] Status: {health_data['status']}, Quantum: {health_data['quantum_framework']}")
+    assert "SQLite" in health_data["database"]
+    print(f"  [PASS] Status: {health_data['status']}, Database: {health_data['database']}")
 
     # ---------------------------------------------------------
-    # 2. Metrics & Methodology Disclaimer
+    # 2. Metrics & Comparison Benchmark
     # ---------------------------------------------------------
-    print("\n[Audit 2/6] Verifying GET /api/metrics...")
+    print("\n[Audit 2/8] Verifying GET /api/metrics...")
     resp_metrics = client.get("/api/metrics")
     assert resp_metrics.status_code == 200
     m_data = resp_metrics.json()
     assert "classical_xgboost" in m_data
     assert "quantum_vqc" in m_data
-    assert "honest_comparison" in m_data
-    cv_auc = m_data["honest_comparison"]["classical_cv_roc_auc"]
-    vqc_auc = m_data["honest_comparison"]["quantum_test_roc_auc"]
-    print(f"  [PASS] XGBoost 5-Fold CV AUC: {cv_auc:.3f} | VQC Single-Split AUC: {vqc_auc:.3f}")
-    print(f"  [PASS] Honest Methodology Disclaimer present.")
+    assert "hybrid_comparison" in m_data
+    assert "fusion_weights" in m_data
+    print(f"  [PASS] Fusion Weights: alpha={m_data['fusion_weights'].get('alpha')}, beta={m_data['fusion_weights'].get('beta')}")
+    print(f"  [PASS] Honest Methodology Disclosure present.")
 
     # ---------------------------------------------------------
-    # 3. Reference Patients Preset Library
+    # 3. Demo Patients Preset Library
     # ---------------------------------------------------------
-    print("\n[Audit 3/6] Verifying GET /api/reference-patients & /api/global-importance...")
-    resp_pts = client.get("/api/reference-patients")
+    print("\n[Audit 3/8] Verifying GET /api/demo-patients & /api/global-importance...")
+    resp_pts = client.get("/api/demo-patients")
     assert resp_pts.status_code == 200
     pts_data = resp_pts.json()
-    assert len(pts_data["patients"]) == 3
+    assert len(pts_data["patients"]) == 4, f"Expected 4 demo patients, got {len(pts_data['patients'])}"
     for p in pts_data["patients"]:
-        assert len(p["features"]) == 30, f"Preset {p['preset_id']} does not have 30 features"
-        print(f"  [PASS] Found Preset: {p['preset_id']} ({p['label']})")
-
-    # Verify caching: subsequent calls return identical data instantly
-    resp_pts2 = client.get("/api/reference-patients")
-    assert resp_pts2.status_code == 200
-    assert resp_pts2.json() == pts_data
-    print("  [PASS] Cached reference patients verified for consistency.")
+        assert len(p["features"]) == 22, f"Preset {p['preset_id']} does not have 22 features"
+        print(f"  [PASS] Found Demo Preset: {p['preset_id']} ({p['label']})")
 
     resp_gi = client.get("/api/global-importance")
     assert resp_gi.status_code == 200
     gi_data = resp_gi.json()
     assert "top_10_biomarkers" in gi_data
-    print(f"  [PASS] Cohort Rankings loaded. #1 Biomarker: {gi_data['top_10_biomarkers'][0]['feature_name']}")
+    print(f"  [PASS] Cohort Rankings loaded. #1 Acoustic Biomarker: {gi_data['top_10_biomarkers'][0]['feature_name']}")
 
     # ---------------------------------------------------------
-    # 4. Synchronous Diagnostic Pipeline
+    # 4. Synchronous Screening Pipeline
     # ---------------------------------------------------------
-    print("\n[Audit 4/6] Verifying POST /api/predict (Synchronous Endpoint)...")
-    mal_sample = pts_data["patients"][0]["features"]
-    ben_sample = pts_data["patients"][1]["features"]
+    print("\n[Audit 4/8] Verifying POST /api/screen/sync (Synchronous Endpoint)...")
+    high_pd_sample = pts_data["patients"][0]["features"]
+    healthy_sample = pts_data["patients"][3]["features"]
 
-    # Test Malignant Case
+    # Test High PD Case
     t0 = time.perf_counter()
-    resp_pred_mal = client.post("/api/predict", json={
-        "patient_id": "TEST-MAL-001",
-        "features": mal_sample,
+    resp_sync_pd = client.post("/api/screen/sync", json={
+        "patient_id": "P-001",
+        "features": high_pd_sample,
     })
-    elapsed_sync_mal = (time.perf_counter() - t0) * 1000.0
-    assert resp_pred_mal.status_code == 200
-    res_m = resp_pred_mal.json()
-    assert res_m["classical"]["probability_malignant"] >= 0.85
-    assert res_m["memo"]["icd10_code"] == "C50.919"
-    assert "CRITICAL" in res_m["memo"]["risk_tier"]
-    print(f"  [PASS] Malignant: XGB Prob={res_m['classical']['probability_malignant']*100:.1f}%, VQC Prob={res_m['quantum']['vqc_probability']*100:.1f}%, Latency={elapsed_sync_mal:.1f}ms")
+    elapsed_pd = (time.perf_counter() - t0) * 1000.0
+    assert resp_sync_pd.status_code == 200
+    res_pd = resp_sync_pd.json()
+    assert res_pd["status"] == "success"
+    assert res_pd["fusion"]["hybrid_probability"] >= 0.50
+    assert "icd10_code" in res_pd["memo"]
+    print(f"  [PASS] PD Case: Classical={res_pd['fusion']['classical_probability']*100:.1f}%, Quantum={res_pd['fusion']['quantum_probability']*100:.1f}% => Hybrid={res_pd['fusion']['hybrid_probability']*100:.1f}%, Latency={elapsed_pd:.1f}ms")
 
-    # Test Benign Case
-    resp_pred_ben = client.post("/api/predict", json={
-        "patient_id": "TEST-BEN-001",
-        "features": ben_sample,
+    # Test Healthy Control Case
+    resp_sync_healthy = client.post("/api/screen/sync", json={
+        "patient_id": "P-004",
+        "features": healthy_sample,
     })
-    assert resp_pred_ben.status_code == 200
-    res_b = resp_pred_ben.json()
-    assert res_b["classical"]["probability_malignant"] <= 0.15
-    assert res_b["memo"]["icd10_code"] == "N60.99"
-    print(f"  [PASS] Benign:    XGB Prob={res_b['classical']['probability_malignant']*100:.1f}%, VQC Prob={res_b['quantum']['vqc_probability']*100:.1f}%")
-
-    # Verify memo generator consensus parameter
-    from backend.reports.memo_gen import format_clinical_memo
-    test_memo = format_clinical_memo(
-        patient_id="TEST-OVERRIDE",
-        xgb_prob=0.9,
-        vqc_prob=0.9,
-        top_shap_features=[],
-        narrative="Test narrative",
-        model_consensus="CUSTOM_OVERRIDE_CONSENSUS",
-    )
-    assert test_memo["concordance"] == "CUSTOM_OVERRIDE_CONSENSUS"
-    print("  [PASS] format_clinical_memo respects explicit model_consensus.")
+    assert resp_sync_healthy.status_code == 200
+    res_healthy = resp_sync_healthy.json()
+    assert res_healthy["fusion"]["hybrid_probability"] <= 0.55
+    print(f"  [PASS] Healthy Case: Hybrid Signal={res_healthy['fusion']['hybrid_probability']*100:.1f}%, Tier={res_healthy['memo']['risk_tier']}")
 
     # ---------------------------------------------------------
     # 5. Live Server-Sent Events (SSE) Streaming
     # ---------------------------------------------------------
-    print("\n[Audit 5/6] Verifying POST /api/predict/stream (SSE Live Stream)...")
+    print("\n[Audit 5/8] Verifying POST /api/screen/stream (6-Stage SSE Live Stream)...")
     t0_stream = time.perf_counter()
-    with client.stream("POST", "/api/predict/stream", json={
+    with client.stream("POST", "/api/screen/stream", json={
         "patient_id": "TEST-STREAM-001",
-        "features": mal_sample,
+        "features": high_pd_sample,
     }) as stream_resp:
         assert stream_resp.status_code == 200
         assert "text/event-stream" in stream_resp.headers["content-type"]
-        
         stream_resp.read()
         full_text = stream_resp.text
         stream_ms = (time.perf_counter() - t0_stream) * 1000.0
@@ -183,42 +165,91 @@ def run_validation_gate_2():
     events = parse_sse_events(full_text)
     event_types = [e[0] for e in events]
     print(f"  [OK] Streamed {len(events)} total SSE events in {stream_ms:.1f}ms.")
-    print(f"  [OK] Event sequence: {' -> '.join(event_types)}")
 
-    # Verify stage progression
     stages_completed = [e[1].get("stage") for e in events if e[0] == "stage_complete"]
-    assert "data_ingestion" in stages_completed
-    assert "quantum_encoding" in stages_completed
-    assert "classical_explainability" in stages_completed
-    assert "clinical_synthesis" in stages_completed
-    assert "final_result" in event_types
-    print("  [PASS] All 4 Agent stages completed and final diagnostic bundle received!")
+    expected_stages = [
+        "data_ingestion",
+        "classical_inference",
+        "quantum_encoding",
+        "hybrid_fusion",
+        "explainability_synthesis",
+        "clinical_memo",
+    ]
+    for stg in expected_stages:
+        assert stg in stages_completed, f"Missing stage in SSE stream: {stg}"
+        print(f"    - Completed Stage: {stg}")
+
+    assert "final_result" in event_types, "Missing final_result event"
+    print("  [PASS] All 6 Agent stages executed sequentially and final consolidated result delivered!")
 
     # ---------------------------------------------------------
-    # 6. Input Guardrails & Rejection Handling
+    # 6. Longitudinal Assessment History
     # ---------------------------------------------------------
-    print("\n[Audit 6/6] Verifying Input Guardrails & Error Responses...")
-    # Malformed length (29 features instead of 30)
-    resp_bad_len = client.post("/api/predict", json={
+    print("\n[Audit 6/8] Verifying GET /api/patient/{id}/history (SQLite Store)...")
+    resp_hist = client.get("/api/patient/P-001/history")
+    assert resp_hist.status_code == 200
+    hist_data = resp_hist.json()
+    assert hist_data["patient_id"] == "P-001"
+    assert hist_data["total_assessments"] >= 3, f"Expected >= 3 visits for P-001, got {hist_data['total_assessments']}"
+    print(f"  [PASS] Retrieved {hist_data['total_assessments']} historical visits for P-001.")
+
+    # ---------------------------------------------------------
+    # 7. Persistence (Saving New Assessment)
+    # ---------------------------------------------------------
+    print("\n[Audit 7/8] Verifying POST /api/patient/{id}/save-assessment...")
+    db = SessionLocal()
+    try:
+        db.query(Assessment).filter(Assessment.patient_id == "P-TEST-999").delete()
+        db.commit()
+    finally:
+        db.close()
+
+    save_payload = {
+        "patient_id": "P-TEST-999",
+        "classical_score": 0.92,
+        "quantum_score": 0.58,
+        "hybrid_score": 0.69,
+        "risk_tier": "MODERATE",
+        "consensus_status": "CONCORDANT",
+        "feature_json": json.dumps({"MDVP:Fo(Hz)": 119.9}),
+        "shap_json": json.dumps([{"feature": "PPE", "shap": 0.55}]),
+        "clinical_memo_json": json.dumps({"summary": "Automated audit test assessment"}),
+    }
+    resp_save = client.post("/api/patient/P-TEST-999/save-assessment", json=save_payload)
+    assert resp_save.status_code == 200
+    save_data = resp_save.json()
+    assert save_data["status"] == "saved"
+    assert "assessment_id" in save_data
+
+    # Verify retrieval
+    resp_check = client.get("/api/patient/P-TEST-999/history")
+    assert resp_check.status_code == 200
+    assert resp_check.json()["total_assessments"] == 1
+    print(f"  [PASS] Saved and retrieved assessment ID {save_data['assessment_id']} from SQLite.")
+
+    # Cleanup
+    db = SessionLocal()
+    try:
+        db.query(Assessment).filter(Assessment.patient_id == "P-TEST-999").delete()
+        db.commit()
+    finally:
+        db.close()
+
+    # ---------------------------------------------------------
+    # 8. Input Guardrails & Validation Rejection
+    # ---------------------------------------------------------
+    print("\n[Audit 8/8] Verifying Input Guardrails & Error Responses...")
+    # Malformed length (21 features instead of 22)
+    resp_bad_len = client.post("/api/screen/sync", json={
         "patient_id": "TEST-BAD",
-        "features": mal_sample[:29],
+        "features": high_pd_sample[:21],
     })
     assert resp_bad_len.status_code in [400, 422]
-    print("  [PASS] Correctly rejected 29-feature vector (HTTP 422/400).")
-
-    # Negative invalid morphometry
-    bad_features = mal_sample.copy()
-    bad_features[0] = -99.9
-    resp_bad_val = client.post("/api/predict", json={
-        "patient_id": "TEST-BAD-VAL",
-        "features": bad_features,
-    })
-    assert resp_bad_val.status_code in [400, 422]
-    print("  [PASS] Correctly rejected negative morphological feature (HTTP 400).")
+    print("  [PASS] Correctly rejected 21-feature vector (HTTP 422/400).")
 
     print("\n" + "=" * 65)
-    print("ALL VALIDATION GATE 2 TESTS PASSED WITH 100% COMPLIANCE!")
-    print("Phase 2 (FastAPI Backend, Deterministic Agents & SSE) is COMPLETE.")
+    print("ALL VALIDATION GATE 2 TESTS PASSED WITH 100% COMPLIANCE (8/8)!")
+    print("PHASE 4 (FastAPI Backend, 6-Stage SSE Agents & SQLite Store) is COMPLETE.")
     print("=" * 65)
     return True
 

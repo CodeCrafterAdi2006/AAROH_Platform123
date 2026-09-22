@@ -1,0 +1,13 @@
+{
+  "alpha": 0.31,
+  "beta": 0.69,
+  "method": "Validation-Tuned Weighted Late Fusion + Meta-Classifier",
+  "formula": "0.31 * P_classical + 0.69 * P_quantum",
+  "validation_cv_roc_auc": 1.0,
+  "calibration_date": "2026-09-23 00:43:57",
+  "meta_weights": [
+    5.1612,
+    0.382
+  ],
+  "meta_intercept": -2.3064
+}
