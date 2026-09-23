@@ -111,15 +111,60 @@ export default function ClinicalPhenotypeCard({
           <span className="text-[10px] text-slate-400 block mt-0.5">Time since onset</span>
         </div>
 
-        {/* Age & Sex Chips */}
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-center justify-between">
-          <span className="text-slate-500">Age:</span>
-          <span className="font-bold text-slate-900">{age} yrs</span>
+        {/* Age Slider */}
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+          <div className="flex items-center justify-between text-slate-600 mb-1">
+            <span className="flex items-center space-x-1">
+              <Calendar className="w-3.5 h-3.5 text-teal-600" />
+              <span>Age</span>
+            </span>
+            <span className="font-bold text-slate-900">{age} yrs</span>
+          </div>
+          <input
+            type="range"
+            min="35"
+            max="90"
+            value={age}
+            onChange={(e) => onMetadataChange && onMetadataChange({ ...clinicalMetadata, age: parseInt(e.target.value) })}
+            className="w-full accent-teal-600 h-1 bg-slate-200 rounded-lg cursor-pointer"
+          />
+          <span className="text-[10px] text-slate-400 block mt-0.5">Demographic risk factor</span>
         </div>
 
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-center justify-between">
-          <span className="text-slate-500">Biological Sex:</span>
-          <span className="font-bold text-slate-900">{sex}</span>
+        {/* Biological Sex Toggle */}
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-600 mb-1">
+            <span className="flex items-center space-x-1">
+              <User className="w-3.5 h-3.5 text-teal-600" />
+              <span>Biological Sex</span>
+            </span>
+            <span className="font-bold text-slate-900">{sex}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1 bg-slate-200/80 p-0.5 rounded-lg text-xs mt-0.5">
+            <button
+              type="button"
+              onClick={() => onMetadataChange && onMetadataChange({ ...clinicalMetadata, sex: 'Male' })}
+              className={`py-0.5 rounded-md font-semibold text-center transition-all ${
+                sex === 'Male'
+                  ? 'bg-white text-teal-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Male
+            </button>
+            <button
+              type="button"
+              onClick={() => onMetadataChange && onMetadataChange({ ...clinicalMetadata, sex: 'Female' })}
+              className={`py-0.5 rounded-md font-semibold text-center transition-all ${
+                sex === 'Female'
+                  ? 'bg-white text-teal-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Female
+            </button>
+          </div>
+          <span className="text-[10px] text-slate-400 block mt-0.5">GP2 Phenotype</span>
         </div>
 
       </div>
